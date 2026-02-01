@@ -99,7 +99,7 @@ bool ReserveBalance::subject_account(Address const &address)
     return state_->is_delegated(effective_code_hash);
 }
 
-uint256_t ReserveBalance::reserve_cap(Address const &address)
+uint256_t ReserveBalance::pretx_reserve(Address const &address)
 {
     MONAD_ASSERT(get_max_reserve_);
     uint256_t const max_reserve = get_max_reserve_(address);
@@ -124,7 +124,7 @@ void ReserveBalance::update_violation_status(
             return;
         }
 
-        uint256_t const reserve = reserve_cap(address);
+        uint256_t const reserve = pretx_reserve(address);
         uint256_t effective_reserve = reserve;
         if (address == sender_) {
             if (sender_can_dip_) {

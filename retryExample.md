@@ -14,10 +14,10 @@ Inside one transaction:
 On the debit, `State::subtract_from_balance(A, 80)` triggers:
 
 ```
-update_rb_violation(A, &account_state)
-  -> rb_reserve_cap(A)
+update_violation_status(A, account_state)
+  -> pretx_reserve(A)
      -> check_min_original_balance(A, 10)
-  -> check_account_min_balance(orig_state, current_account, 10)
+  -> check_min_balance(A, violation_threshold)
 ```
 
 With `balance = 20`, `orig_balance = 100`, and `value = 10`:
