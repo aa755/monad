@@ -102,9 +102,7 @@ uint256_t ReserveBalance::pretx_reserve(Address const &address)
 {
     MONAD_ASSERT(get_max_reserve_);
     uint256_t const max_reserve = get_max_reserve_(address);
-    return state_->check_min_original_balance(address, max_reserve)
-               ? max_reserve
-               : state_->get_original_balance(address);
+    return std::min(max_reserve, state_->get_original_balance(address));
 }
 
 void ReserveBalance::update_violation_status(
@@ -147,7 +145,8 @@ void ReserveBalance::update_violation_status(
         return;
     }
 
-    if (!state_->check_min_balance(address, violation_threshold)) {
+    uint256_t const curr_balance = state_->get_balance(address);
+    if (curr_balance < violation_threshold) {
         failed_.insert(address);
         account_state.set_rb_failed(true);
     }
