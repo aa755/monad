@@ -372,7 +372,7 @@ void State::set_code_hash(Address const &address, bytes32_t const &hash)
     auto &account = account_state.account_;
     MONAD_ASSERT(account.has_value());
     account.value().code_hash = hash;
-    rb_.on_code_change(address, account_state);
+    // NOTE: Production code should use set_code instead of set_code_hash.
 }
 
 evmc_storage_status State::set_storage(
@@ -582,7 +582,7 @@ void State::set_code(Address const &address, byte_string_view const code)
     auto const code_hash = to_bytes(keccak256(code));
     code_[code_hash] = vm().try_insert_varcode_raw(code_hash, code);
     account.value().code_hash = code_hash;
-    rb_.on_code_change(address, account_state);
+    rb_.on_set_code(address, account_state, code);
 }
 
 void State::create_contract(Address const &address)

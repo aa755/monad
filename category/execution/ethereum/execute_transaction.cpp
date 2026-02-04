@@ -219,6 +219,11 @@ template <Traits traits>
 evmc::Result ExecuteTransactionNoValidation<traits>::operator()(
     State &state, EvmcHost<traits> &host)
 {
+    if constexpr (::monad::is_monad_trait_v<traits>) {
+        state.init_reserve_balance_context<traits>(
+            sender_, tx_, header_.base_fee_per_gas, host.i_, host.chain_ctx_);
+    }
+
     irrevocable_change<traits>(
         state,
         tx_,
@@ -230,11 +235,6 @@ evmc::Result ExecuteTransactionNoValidation<traits>::operator()(
     uint64_t auth_refund = 0u;
     if constexpr (traits::evm_rev() >= EVMC_PRAGUE) {
         auth_refund = process_authorizations(state, host);
-    }
-
-    if constexpr (::monad::is_monad_trait_v<traits>) {
-        state.init_reserve_balance_context<traits>(
-            sender_, tx_, header_.base_fee_per_gas, host.i_, host.chain_ctx_);
     }
 
     // EIP-3651

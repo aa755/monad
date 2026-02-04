@@ -236,7 +236,6 @@ public:
     {
         if constexpr (is_monad_trait_v<traits>) {
             rb_.init_from_tx<traits>(sender, tx, base_fee_per_gas, i, ctx);
-            rb_.on_debit(sender, current_account_state(sender));
         }
     }
 

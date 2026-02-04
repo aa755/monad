@@ -172,6 +172,11 @@ public:
         rb_violation_threshold_ = value;
     }
 
+    void clear_rb_violation_threshold()
+    {
+        rb_violation_threshold_.reset();
+    }
+
     [[nodiscard]] bool rb_failed() const
     {
         return rb_failed_;

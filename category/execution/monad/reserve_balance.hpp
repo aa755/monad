@@ -71,7 +71,9 @@ public:
 
     void on_pop_reject(FailedSet const &accounts);
 
-    void on_code_change(Address const &address, AccountState &account_state);
+    void on_set_code(
+        Address const &address, AccountState &account_state,
+        byte_string_view const code);
 
     template <Traits traits>
         requires is_monad_trait_v<traits>

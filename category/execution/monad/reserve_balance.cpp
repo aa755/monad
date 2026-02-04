@@ -190,8 +190,9 @@ void ReserveBalance::on_pop_reject(FailedSet const &accounts)
     }
 }
 
-void ReserveBalance::on_code_change(
-    Address const &address, AccountState &account_state)
+void ReserveBalance::on_set_code(
+    Address const &address, AccountState &account_state,
+    byte_string_view const code)
 {
     if (!tracking_enabled_) {
         return;
@@ -199,13 +200,14 @@ void ReserveBalance::on_code_change(
     if (!use_recent_code_hash_) {
         return;
     }
-    // EIP7702 auth processing is assumed to be done before the call to
-    // this->init_from_tx, which turns on tracking.
-    // So we assume here that the new code is not a delegation marker.
-    // So this account is a non-EOA account => it becomes exempt.
-    account_state.set_rb_violation_threshold(uint256_t{0});
-    account_state.set_rb_failed(false);
-    failed_.erase(address);
+    if (!vm::evm::is_delegated({code.data(), code.size()})) {
+        account_state.set_rb_violation_threshold(uint256_t{0});
+        account_state.set_rb_failed(false);
+        failed_.erase(address);
+        return;
+    }
+    account_state.clear_rb_violation_threshold();
+    update_violation_status(address, account_state);
 }
 
 template <Traits traits>
