@@ -120,8 +120,7 @@ void ReserveBalance::update_violation_status(
             return;
         }
 
-        uint256_t const reserve = pretx_reserve(address);
-        uint256_t effective_reserve = reserve;
+        uint256_t reserve = pretx_reserve(address);
         if (address == sender_) {
             if (sender_can_dip_) {
                 account_state.set_rb_violation_threshold(uint256_t{0});
@@ -132,9 +131,9 @@ void ReserveBalance::update_violation_status(
             MONAD_ASSERT_THROW(
                 sender_gas_fees_ <= reserve,
                 "gas fee greater than reserve for non-dipping transaction");
-            effective_reserve = reserve - sender_gas_fees_;
+            reserve = reserve - sender_gas_fees_;
         }
-        account_state.set_rb_violation_threshold(effective_reserve);
+        account_state.set_rb_violation_threshold(reserve);
     }
 
     uint256_t const violation_threshold =
@@ -145,8 +144,7 @@ void ReserveBalance::update_violation_status(
         return;
     }
 
-    uint256_t const curr_balance = state_->get_balance(address);
-    if (curr_balance < violation_threshold) {
+    if (state_->get_balance(address) < violation_threshold) {
         failed_.insert(address);
         account_state.set_rb_failed(true);
     }

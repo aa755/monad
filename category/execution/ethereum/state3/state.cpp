@@ -372,7 +372,7 @@ void State::set_code_hash(Address const &address, bytes32_t const &hash)
     auto &account = account_state.account_;
     MONAD_ASSERT(account.has_value());
     account.value().code_hash = hash;
-    // NOTE: Production code should use set_code instead of set_code_hash.
+    // NOTE: Production code must use set_code instead of set_code_hash.
 }
 
 evmc_storage_status State::set_storage(

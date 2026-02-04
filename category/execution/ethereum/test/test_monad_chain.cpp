@@ -195,6 +195,7 @@ void run_revert_transaction_test(
         .type = TransactionType::legacy,
         .max_priority_fee_per_gas = 0,
     };
+
     std::vector<Address> senders;
     if (prevent_dip_bitset & (1 << SenderInBlock)) {
         senders.push_back(SENDER);

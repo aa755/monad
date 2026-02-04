@@ -243,11 +243,6 @@ public:
             rb_.init_from_tx<traits>(sender, tx, base_fee_per_gas, i, ctx);
         }
     }
-
-private:
-    bool check_account_min_balance(
-        OriginalAccountState &, std::optional<Account> const &,
-        uint256_t const &);
 };
 
 MONAD_NAMESPACE_END
