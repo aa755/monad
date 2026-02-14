@@ -258,23 +258,21 @@ void record_account_access_events_internal(
     monad_exec_account_access_context ctx, std::optional<uint32_t> opt_txn_num,
     State const &state)
 {
-    auto const &prestate_map = state.original();
+    auto const &history_map = state.history();
 
     ReservedExecEvent const list_header =
         reserve_event<monad_exec_account_access_list_header>(
             exec_recorder, MONAD_EXEC_ACCOUNT_ACCESS_LIST_HEADER, opt_txn_num);
     *list_header.payload = monad_exec_account_access_list_header{
-        .entry_count = static_cast<uint32_t>(prestate_map.size()),
+        .entry_count = static_cast<uint32_t>(history_map.size()),
         .access_context = ctx};
     exec_recorder->commit(list_header);
 
-    auto const &current_state_map = state.current();
-    for (uint32_t index = 0; auto const &[address, prestate] : prestate_map) {
-        CurrentAccountState const *current_state = nullptr;
-        if (auto const i = current_state_map.find(address);
-            i != end(current_state_map)) {
-            current_state = std::addressof(i->second.recent());
-        }
+    for (uint32_t index = 0;
+         auto const &[address, account_history] : history_map) {
+        auto const &prestate = account_history.original_state();
+        CurrentAccountState const *const current_state =
+            account_history.recent_current_state();
         record_account_events(
             exec_recorder,
             ctx,

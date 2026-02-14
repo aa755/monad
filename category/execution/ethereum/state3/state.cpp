@@ -53,45 +53,38 @@
 
 MONAD_NAMESPACE_BEGIN
 
-OriginalAccountState &State::original_account_state(Address const &address)
+AccountHistory &State::account_history(Address const &address)
 {
-    auto it = original_.find(address);
-    if (it == original_.end()) {
+    auto it = history_.find(address);
+    if (it == history_.end()) {
         // block state
         auto const account = block_state_.read_account(address);
-        it = original_.try_emplace(address, account).first;
+        it = history_.try_emplace(address, account).first;
     }
     return it->second;
 }
 
+OriginalAccountState &State::original_account_state(Address const &address)
+{
+    return account_history(address).original_state();
+}
+
 AccountState const &State::recent_account_state(Address const &address)
 {
-    // current
-    auto const it = current_.find(address);
-    if (it != current_.end()) {
-        return it->second.recent();
+    auto const it = history_.find(address);
+    if (it != history_.end()) {
+        return it->second.recent_state();
     }
-    // original
-    return original_account_state(address);
+    return account_history(address).recent_state();
 }
 
 CurrentAccountState &State::current_account_state(Address const &address)
 {
-    // current
-    auto it = current_.find(address);
-    if (MONAD_UNLIKELY(it == current_.end())) {
-        // original
-        it = current_
-                 .try_emplace(
-                     address,
-                     CurrentAccountState{original_account_state(address)},
-                     version_)
-                 .first;
-    }
+    auto &history = account_history(address);
     if (!dirty_.empty()) {
         dirty_.back().emplace(address);
     }
-    return it->second.current(version_);
+    return history.current_state(version_);
 }
 
 std::optional<Account> &State::current_account(Address const &address)
@@ -130,15 +123,9 @@ bool State::is_delegated(bytes32_t const &code_hash)
     return vm::evm::is_delegated({icode->code(), icode->size()});
 }
 
-State::Map<Address, OriginalAccountState> const &State::original() const
+State::Map<Address, AccountHistory> const &State::history() const
 {
-    return original_;
-}
-
-State::Map<Address, VersionStack<CurrentAccountState>> const &
-State::current() const
-{
-    return current_;
+    return history_;
 }
 
 State::Map<bytes32_t, vm::SharedVarcode> const &State::code() const
@@ -162,8 +149,9 @@ void State::pop_accept()
     auto accounts = std::move(dirty_.back());
     dirty_.pop_back();
     for (auto const &dirty_address : accounts) {
-        auto const it = current_.find(dirty_address);
-        MONAD_ASSERT(it != current_.end());
+        auto const it = history_.find(dirty_address);
+        MONAD_ASSERT(it != history_.end());
+        MONAD_ASSERT(it->second.has_current_state());
         it->second.pop_accept(version_);
         if (!dirty_.empty()) {
             dirty_.back().emplace(dirty_address);
@@ -180,23 +168,16 @@ void State::pop_reject()
     MONAD_ASSERT(version_);
     MONAD_ASSERT(dirty_.size() == version_);
 
-    std::vector<Address> removals;
     auto accounts = std::move(dirty_.back());
     dirty_.pop_back();
     for (auto const &dirty_address : accounts) {
-        auto const it = current_.find(dirty_address);
-        MONAD_ASSERT(it != current_.end());
-        if (it->second.pop_reject(version_)) {
-            removals.push_back(it->first);
-        }
+        auto const it = history_.find(dirty_address);
+        MONAD_ASSERT(it != history_.end());
+        MONAD_ASSERT(it->second.has_current_state());
+        it->second.pop_reject(version_);
     }
 
     logs_.pop_reject(version_);
-
-    while (removals.size()) {
-        current_.erase(removals.back());
-        removals.pop_back();
-    }
 
     rb_.on_pop_reject(accounts);
 
@@ -268,11 +249,12 @@ bytes32_t State::get_code_hash(Address const &address)
 
 bytes32_t State::get_storage(Address const &address, bytes32_t const &key)
 {
-    auto const it = current_.find(address);
-    if (it == current_.end()) {
-        auto const it2 = original_.find(address);
-        MONAD_ASSERT(it2 != original_.end());
-        auto &account_state = it2->second;
+    auto it = history_.find(address);
+    MONAD_ASSERT(it != history_.end());
+    auto &account_history = it->second;
+    auto const *const current_state = account_history.recent_current_state();
+    if (current_state == nullptr) {
+        auto &account_state = account_history.original_state();
         auto const &account = account_state.account_;
         MONAD_ASSERT(account.has_value());
         auto &storage = account_state.storage_;
@@ -287,16 +269,14 @@ bytes32_t State::get_storage(Address const &address, bytes32_t const &key)
         }
     }
     else {
-        auto const &account_state = it->second.recent();
+        auto const &account_state = *current_state;
         auto const &account = account_state.account_;
         MONAD_ASSERT(account.has_value());
         auto const &storage = account_state.storage_;
         if (auto const *const it2 = storage.find(key); it2) {
             return *it2;
         }
-        auto const it2 = original_.find(address);
-        MONAD_ASSERT(it2 != original_.end());
-        auto &original_account_state = it2->second;
+        auto &original_account_state = account_history.original_state();
         auto const &original_account = original_account_state.account_;
         if (!original_account.has_value() ||
             account.value().incarnation !=
@@ -319,20 +299,28 @@ bytes32_t State::get_storage(Address const &address, bytes32_t const &key)
 bytes32_t
 State::get_transient_storage(Address const &address, bytes32_t const &key)
 {
-    auto const it = current_.find(address);
-    if (it == current_.end()) {
+    auto const it = history_.find(address);
+    if (it == history_.end()) {
         return {};
     }
-    return it->second.recent().get_transient_storage(key);
+    auto const *const current_state = it->second.recent_current_state();
+    if (current_state == nullptr) {
+        return {};
+    }
+    return current_state->get_transient_storage(key);
 }
 
 bool State::is_touched(Address const &address)
 {
-    auto const it = current_.find(address);
-    if (it == current_.end()) {
+    auto const it = history_.find(address);
+    if (it == history_.end()) {
         return false;
     }
-    return it->second.recent().is_touched();
+    auto const *const current_state = it->second.recent_current_state();
+    if (current_state == nullptr) {
+        return false;
+    }
+    return current_state->is_touched();
 }
 
 void State::set_nonce(Address const &address, uint64_t const nonce)
@@ -474,11 +462,14 @@ void State::destruct_suicides()
 {
     MONAD_ASSERT(!version_);
 
-    for (auto &it : current_) {
-        auto &stack = it.second;
-        MONAD_ASSERT(stack.size() == 1);
-        MONAD_ASSERT(stack.version() == 0);
-        auto &account_state = stack.current(0);
+    for (auto &it : history_) {
+        auto *const stack = it.second.current_stack();
+        if (stack == nullptr) {
+            continue;
+        }
+        MONAD_ASSERT(stack->size() == 1);
+        MONAD_ASSERT(stack->version() == 0);
+        auto &account_state = stack->current(0);
         if (account_state.is_destructed()) {
             auto &account = account_state.account_;
             if constexpr (traits::evm_rev() < EVMC_CANCUN) {
@@ -500,11 +491,14 @@ void State::destruct_touched_dead()
 {
     MONAD_ASSERT(!version_);
 
-    for (auto &it : current_) {
-        auto &stack = it.second;
-        MONAD_ASSERT(stack.size() == 1);
-        MONAD_ASSERT(stack.version() == 0);
-        auto &account_state = stack.current(0);
+    for (auto &it : history_) {
+        auto *const stack = it.second.current_stack();
+        if (stack == nullptr) {
+            continue;
+        }
+        MONAD_ASSERT(stack->size() == 1);
+        MONAD_ASSERT(stack->version() == 0);
+        auto &account_state = stack->current(0);
         if (MONAD_LIKELY(!account_state.is_touched())) {
             continue;
         }
@@ -662,9 +656,10 @@ void State::set_to_state_incarnation(Address const &address)
 bool State::try_fix_account_mismatch(
     Address const &address, std::optional<Account> const &actual)
 {
-    auto const original_it = original_.find(address);
-    MONAD_ASSERT(original_it != original_.end());
-    OriginalAccountState &original_state = original_it->second;
+    auto it = history_.find(address);
+    MONAD_ASSERT(it != history_.end());
+    auto &account_history = it->second;
+    OriginalAccountState &original_state = account_history.original_state();
     auto &original = original_state.account_;
     // verify original used and original found are otherwise the same
     if (is_dead(original)) {
@@ -695,10 +690,10 @@ bool State::try_fix_account_mismatch(
         return false;
     }
     // adjust balances
-    auto const current_it = current_.find(address);
-    if (current_it != current_.end()) {
-        MONAD_ASSERT(current_it->second.size() == 1);
-        auto &recent_state = current_it->second.recent();
+    if (auto *const current_stack = account_history.current_stack();
+        current_stack != nullptr) {
+        MONAD_ASSERT(current_stack->size() == 1);
+        auto &recent_state = current_stack->recent();
         auto &recent = recent_state.account_;
         if (!recent) {
             return false;
@@ -724,33 +719,7 @@ bool State::try_fix_account_mismatch(
 bool State::record_balance_constraint_for_debit(
     Address const &address, uint256_t const &debit)
 {
-    auto const &account = recent_account(address);
-    uint256_t const balance = account.has_value() ? account->balance : 0;
-
-    auto &original_state = original_account_state(address);
-    // RELAXED MERGE
-    // if current balance  >= `debit`, then:
-    // 1. compute the amount that current balance exceeds `debit`
-    // 2. require that the original balance at merge time is at least the
-    // original balance used during this execution less said excess
-    if (balance >= debit) {
-        uint256_t const diff = balance - debit;
-        auto const &original = original_state.account_;
-        uint256_t const original_balance =
-            original.has_value() ? original->balance : 0;
-        if (original_balance > diff) { // avoid underflow when <= diff
-            uint256_t const min_balance =
-                original_balance -
-                diff; // original balance - current balance + debit
-            original_state.set_min_balance(min_balance);
-        }
-        return true;
-    }
-
-    // otherwise require that original balance at merge time matches
-    // original balance used during this execution exactly
-    original_state.set_validate_exact_balance();
-    return false;
+    return account_history(address).record_min_balance_for_debit(debit);
 }
 
 MONAD_NAMESPACE_END

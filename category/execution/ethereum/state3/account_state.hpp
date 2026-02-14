@@ -22,6 +22,7 @@
 #include <category/core/likely.h>
 #include <category/execution/ethereum/core/account.hpp>
 #include <category/execution/ethereum/state3/account_substate.hpp>
+#include <category/execution/ethereum/state3/version_stack.hpp>
 
 #include <evmc/evmc.h>
 
@@ -34,6 +35,7 @@
 #pragma GCC diagnostic pop
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -227,8 +229,17 @@ public:
         return 0;
     }
 
+    [[nodiscard]] uint256_t get_balance_or_zero() const
+    {
+        if (account_.has_value()) {
+            return account_->balance;
+        }
+        return 0;
+    }
+
 private:
     friend class State;
+    friend class AccountHistory;
 
     void set_min_balance(uint256_t const &value)
     {
@@ -236,6 +247,122 @@ private:
         MONAD_ASSERT(account_->balance >= value);
         if (value > min_balance_) {
             min_balance_ = value;
+        }
+    }
+};
+
+class AccountHistory
+{
+    OriginalAccountState original_;
+    std::optional<VersionStack<CurrentAccountState>> current_;
+
+public:
+    explicit AccountHistory(std::optional<Account> const &account)
+        : original_(account)
+    {
+    }
+
+    explicit AccountHistory(std::optional<Account> &&account)
+        : original_(std::move(account))
+    {
+    }
+
+    AccountHistory(AccountHistory &&) noexcept = default;
+    AccountHistory(AccountHistory const &) = default;
+    AccountHistory &operator=(AccountHistory &&) noexcept = default;
+    AccountHistory &operator=(AccountHistory const &) = default;
+
+    [[nodiscard]] OriginalAccountState const &original_state() const
+    {
+        return original_;
+    }
+
+    [[nodiscard]] OriginalAccountState &original_state()
+    {
+        return original_;
+    }
+
+    [[nodiscard]] bool has_current_state() const
+    {
+        return current_.has_value();
+    }
+
+    [[nodiscard]] VersionStack<CurrentAccountState> const *current_stack() const
+    {
+        if (!current_) {
+            return nullptr;
+        }
+        return std::addressof(*current_);
+    }
+
+    [[nodiscard]] VersionStack<CurrentAccountState> *current_stack()
+    {
+        if (!current_) {
+            return nullptr;
+        }
+        return std::addressof(*current_);
+    }
+
+    [[nodiscard]] CurrentAccountState const *recent_current_state() const
+    {
+        if (!current_) {
+            return nullptr;
+        }
+        return std::addressof(current_->recent());
+    }
+
+    [[nodiscard]] AccountState const &recent_state() const
+    {
+        if (current_) {
+            return current_->recent();
+        }
+        return original_;
+    }
+
+    [[nodiscard]] CurrentAccountState &current_state(unsigned const version)
+    {
+        if (!current_) {
+            current_.emplace(CurrentAccountState{original_}, version);
+        }
+        return current_->current(version);
+    }
+
+    [[nodiscard]] uint256_t recent_balance() const
+    {
+        auto const &recent_account = get_account_for_trace(recent_state());
+        if (recent_account.has_value()) {
+            return recent_account->balance;
+        }
+        return 0;
+    }
+
+    [[nodiscard]] bool record_min_balance_for_debit(uint256_t const &debit)
+    {
+        uint256_t const balance = recent_balance();
+        if (balance >= debit) {
+            uint256_t const diff = balance - debit;
+            uint256_t const original_balance = original_.get_balance_or_zero();
+            if (original_balance > diff) {
+                original_.set_min_balance(original_balance - diff);
+            }
+            return true;
+        }
+
+        original_.set_validate_exact_balance();
+        return false;
+    }
+
+    void pop_accept(unsigned const version)
+    {
+        MONAD_ASSERT(current_);
+        current_->pop_accept(version);
+    }
+
+    void pop_reject(unsigned const version)
+    {
+        MONAD_ASSERT(current_);
+        if (current_->pop_reject(version)) {
+            current_.reset();
         }
     }
 };

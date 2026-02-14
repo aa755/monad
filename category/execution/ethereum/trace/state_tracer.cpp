@@ -57,17 +57,20 @@ namespace trace
         // beneficiary before execution, which causes the beneficiary to show up
         // in the prestate trace, even if it did not participate in the block.
 
-        // First check that the beneficiary is in the `original` accounts and
-        // `current` accounts. If not, then just return.
-        auto const orig_it = state.original().find(beneficiary_);
-        auto const curr_it = state.current().find(beneficiary_);
-        if (orig_it == state.original().end() ||
-            curr_it == state.current().end()) {
+        auto const it = state.history().find(beneficiary_);
+        if (it == state.history().end()) {
             return true;
         }
 
-        OriginalAccountState const &original_state = orig_it->second;
-        AccountState const &current_state = curr_it->second.recent();
+        auto const &account_history = it->second;
+        auto const *const current_state_ptr =
+            account_history.recent_current_state();
+        if (current_state_ptr == nullptr) {
+            return true;
+        }
+        OriginalAccountState const &original_state =
+            account_history.original_state();
+        AccountState const &current_state = *current_state_ptr;
 
         // If the original state has no account, then the beneficiary was
         // created during the block and if the current state has an account,
@@ -91,10 +94,8 @@ namespace trace
             return true;
         }
 
-        Account const &original =
-            get_account_for_trace(orig_it->second).value();
-        Account const &current =
-            get_account_for_trace(curr_it->second.recent()).value();
+        Account const &original = get_account_for_trace(original_state).value();
+        Account const &current = get_account_for_trace(current_state).value();
 
         // If `original` and `current` are the same and *have* empty storages,
         // then it must be that the beneficiary did not participate in the block
@@ -112,15 +113,30 @@ namespace trace
         return true;
     }
 
-    void PrestateTracer::encode(
-        Map<Address, OriginalAccountState> const &prestate, State &state)
+    void PrestateTracer::encode(State &state)
     {
-        state_to_json(
-            prestate,
-            state,
+        storage_ = nullptr;
+        auto const beneficiary =
             retain_beneficiary(state) ? std::nullopt
-                                      : std::optional<Address>{beneficiary_},
-            storage_);
+                                      : std::optional<Address>{beneficiary_};
+
+        for (auto const &[address, account_history] : state.history()) {
+            // Skip beneficiary account, if present
+            if (address == beneficiary) {
+                continue;
+            }
+            // TODO: Because this address is "touched". Should we keep this for
+            // monad?
+            if (MONAD_UNLIKELY(address == monad::ripemd_address)) {
+                continue;
+            }
+            auto const key = bytes_to_hex(address.bytes);
+            if (storage_.is_null()) {
+                storage_ = json::object();
+            }
+            storage_[key] =
+                account_state_to_json(account_history.original_state(), state);
+        }
     }
 
     StorageDeltas StateDiffTracer::generate_storage_deltas(
@@ -142,19 +158,18 @@ namespace trace
     {
         StateDeltas state_deltas{};
 
-        auto const &current = state.current();
-        auto const &original = state.original();
-
-        for (auto const &[address, current_stack] : current) {
-            auto const it = original.find(address);
-            MONAD_ASSERT(it != original.end());
+        for (auto const &[address, account_history] : state.history()) {
+            auto const *const current_stack = account_history.current_stack();
+            if (current_stack == nullptr) {
+                continue;
+            }
 
             // Possible diff.
-            auto const &current_account_state = current_stack.recent();
+            auto const &current_account_state = current_stack->recent();
             auto const &current_account =
                 get_account_for_trace(current_account_state);
             auto const &current_storage = current_account_state.storage_;
-            auto const &original_account_state = it->second;
+            auto const &original_account_state = account_history.original_state();
             auto const &original_account =
                 get_account_for_trace(original_account_state);
             auto const &original_storage = original_account_state.storage_;
@@ -203,9 +218,13 @@ namespace trace
     void AccessListTracer::encode(State &state)
     {
         auto access_list = json::array();
-        for (auto const &[address, current_stack] : state.current()) {
+        for (auto const &[address, account_history] : state.history()) {
+            auto const *const current_stack = account_history.current_stack();
+            if (current_stack == nullptr) {
+                continue;
+            }
             auto keys = json::array();
-            auto const &current_account_state = current_stack.recent();
+            auto const &current_account_state = current_stack->recent();
             for (auto const &key :
                  current_account_state.get_accessed_storage()) {
                 keys.push_back(bytes_to_hex(key.bytes));
@@ -246,7 +265,7 @@ namespace trace
             overloaded{
                 [](std::monostate) {},
                 [&state](PrestateTracer &prestate) {
-                    prestate.encode(state.original(), state);
+                    prestate.encode(state);
                 },
                 [&state](StateDiffTracer &statediff) {
                     statediff.encode(statediff.trace(state), state);
