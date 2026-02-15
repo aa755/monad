@@ -65,7 +65,7 @@ AccountHistory &State::account_history(Address const &address)
 
 OriginalAccountState &State::original_account_state(Address const &address)
 {
-    return account_history(address).original_state();
+    return account_history(address).original_state(AccountHistory::StateKey{});
 }
 
 AccountState const &State::recent_account_state(Address const &address)
@@ -83,7 +83,7 @@ CurrentAccountState &State::current_account_state(Address const &address)
     if (!dirty_.empty()) {
         dirty_.back().emplace(address);
     }
-    return history.current_state(version_);
+    return history.current_state(AccountHistory::StateKey{}, version_);
 }
 
 std::optional<Account> &State::current_account(Address const &address)
@@ -151,7 +151,7 @@ void State::pop_accept()
         auto const it = history_.find(dirty_address);
         MONAD_ASSERT(it != history_.end());
         MONAD_ASSERT(it->second.has_current_state());
-        it->second.pop_accept(version_);
+        it->second.pop_accept(AccountHistory::StateKey{}, version_);
         if (!dirty_.empty()) {
             dirty_.back().emplace(dirty_address);
         }
@@ -173,7 +173,7 @@ void State::pop_reject()
         auto const it = history_.find(dirty_address);
         MONAD_ASSERT(it != history_.end());
         MONAD_ASSERT(it->second.has_current_state());
-        it->second.pop_reject(version_);
+        it->second.pop_reject(AccountHistory::StateKey{}, version_);
     }
 
     logs_.pop_reject(version_);
@@ -247,7 +247,8 @@ bytes32_t State::get_storage(Address const &address, bytes32_t const &key)
     MONAD_ASSERT(it != history_.end());
     auto &account_history = it->second;
     if (!account_history.has_current_state()) {
-        auto &account_state = account_history.original_state();
+        auto &account_state =
+            account_history.original_state(AccountHistory::StateKey{});
         auto const &account = account_state.account_;
         MONAD_ASSERT(account.has_value());
         auto &storage = account_state.storage_;
@@ -269,7 +270,8 @@ bytes32_t State::get_storage(Address const &address, bytes32_t const &key)
         if (auto const *const it2 = storage.find(key); it2) {
             return *it2;
         }
-        auto &original_account_state = account_history.original_state();
+        auto &original_account_state =
+            account_history.original_state(AccountHistory::StateKey{});
         auto const &original_account = original_account_state.account_;
         if (!original_account.has_value() ||
             account.value().incarnation !=
@@ -333,7 +335,8 @@ void State::add_to_balance(
     if (!dirty_.empty()) {
         dirty_.back().emplace(address);
     }
-    history.add_to_balance(version_, incarnation_, delta);
+    history.add_to_balance(
+        AccountHistory::StateKey{}, version_, incarnation_, delta);
     rb_.on_credit(address);
 }
 
@@ -343,7 +346,8 @@ void State::subtract_from_balance(
     if (!dirty_.empty()) {
         dirty_.back().emplace(address);
     }
-    history.subtract_from_balance(version_, incarnation_, delta);
+    history.subtract_from_balance(
+        AccountHistory::StateKey{}, version_, incarnation_, delta);
     rb_.on_debit(address);
 }
 
@@ -429,7 +433,8 @@ State::selfdestruct(Address const &address, Address const &beneficiary)
     if (!dirty_.empty()) {
         dirty_.back().emplace(address);
     }
-    auto &account_state = sender_history.current_state(version_);
+    auto &account_state =
+        sender_history.current_state(AccountHistory::StateKey{}, version_);
     auto &account = account_state.account_;
     MONAD_ASSERT(account.has_value());
     auto const initial_balance = account.value().balance;
@@ -444,7 +449,9 @@ State::selfdestruct(Address const &address, Address const &beneficiary)
                 beneficiary_history, beneficiary, account.value().balance);
         }
         subtract_from_balance(sender_history, address, account.value().balance);
-        sender_history.original_state().set_validate_exact_balance();
+        sender_history
+            .original_state(AccountHistory::StateKey{})
+            .set_validate_exact_balance();
     }
     else {
         if (address != beneficiary || account->incarnation == incarnation_) {
@@ -458,7 +465,9 @@ State::selfdestruct(Address const &address, Address const &beneficiary)
             }
             subtract_from_balance(
                 sender_history, address, account.value().balance);
-            sender_history.original_state().set_validate_exact_balance();
+            sender_history
+                .original_state(AccountHistory::StateKey{})
+                .set_validate_exact_balance();
         }
     }
 
@@ -478,7 +487,7 @@ void State::destruct_suicides()
         if (!account_history.has_current_state()) {
             continue;
         }
-        auto &stack = account_history.current_stack();
+        auto &stack = account_history.current_stack(AccountHistory::StateKey{});
         MONAD_ASSERT(stack.size() == 1);
         MONAD_ASSERT(stack.version() == 0);
         auto &account_state = stack.current(0);
@@ -508,7 +517,7 @@ void State::destruct_touched_dead()
         if (!account_history.has_current_state()) {
             continue;
         }
-        auto &stack = account_history.current_stack();
+        auto &stack = account_history.current_stack(AccountHistory::StateKey{});
         MONAD_ASSERT(stack.size() == 1);
         MONAD_ASSERT(stack.version() == 0);
         auto &account_state = stack.current(0);
@@ -672,7 +681,8 @@ bool State::try_fix_account_mismatch(
     auto it = history_.find(address);
     MONAD_ASSERT(it != history_.end());
     auto &account_history = it->second;
-    OriginalAccountState &original_state = account_history.original_state();
+    OriginalAccountState &original_state =
+        account_history.original_state(AccountHistory::StateKey{});
     auto &original = original_state.account_;
     // verify original used and original found are otherwise the same
     if (is_dead(original)) {
@@ -704,7 +714,8 @@ bool State::try_fix_account_mismatch(
     }
     // adjust balances
     if (account_history.has_current_state()) {
-        auto &current_stack = account_history.current_stack();
+        auto &current_stack =
+            account_history.current_stack(AccountHistory::StateKey{});
         MONAD_ASSERT(current_stack.size() == 1);
         auto &recent_state = current_stack.recent();
         auto &recent = recent_state.account_;

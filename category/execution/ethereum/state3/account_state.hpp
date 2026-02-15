@@ -309,21 +309,27 @@ public:
         return original_;
     }
 
-private:
-    friend class State;
+public:
+    // Access key: only State can construct this and call State-only APIs.
+    class StateKey
+    {
+        friend class State;
+        StateKey() = default;
+    };
 
-    [[nodiscard]] OriginalAccountState &original_state()
+    [[nodiscard]] OriginalAccountState &original_state(StateKey)
     {
         return original_;
     }
 
-    [[nodiscard]] VersionStack<CurrentAccountState> &current_stack()
+    [[nodiscard]] VersionStack<CurrentAccountState> &current_stack(StateKey)
     {
         MONAD_ASSERT(current_);
         return *current_;
     }
 
-    [[nodiscard]] CurrentAccountState &current_state(unsigned const version)
+    [[nodiscard]] CurrentAccountState &
+    current_state(StateKey, unsigned const version)
     {
         if (!current_) {
             current_.emplace(CurrentAccountState{original_}, version);
@@ -332,10 +338,11 @@ private:
     }
 
     void add_to_balance(
-        unsigned const version, Incarnation const &incarnation,
+        StateKey const key, unsigned const version,
+        Incarnation const &incarnation,
         uint256_t const &delta)
     {
-        auto &account_state = current_state(version);
+        auto &account_state = current_state(key, version);
         auto &account = account_state.account_;
         if (MONAD_UNLIKELY(!account.has_value())) {
             account = Account{.incarnation = incarnation};
@@ -351,10 +358,11 @@ private:
     }
 
     void subtract_from_balance(
-        unsigned const version, Incarnation const &incarnation,
+        StateKey const key, unsigned const version,
+        Incarnation const &incarnation,
         uint256_t const &delta)
     {
-        auto &account_state = current_state(version);
+        auto &account_state = current_state(key, version);
         auto &account = account_state.account_;
         if (MONAD_UNLIKELY(!account.has_value())) {
             account = Account{.incarnation = incarnation};
@@ -366,13 +374,13 @@ private:
         account_state.touch();
     }
 
-    void pop_accept(unsigned const version)
+    void pop_accept(StateKey, unsigned const version)
     {
         MONAD_ASSERT(current_);
         current_->pop_accept(version);
     }
 
-    void pop_reject(unsigned const version)
+    void pop_reject(StateKey, unsigned const version)
     {
         MONAD_ASSERT(current_);
         if (current_->pop_reject(version)) {
