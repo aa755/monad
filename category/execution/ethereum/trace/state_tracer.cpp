@@ -63,14 +63,12 @@ namespace trace
         }
 
         auto const &account_history = it->second;
-        auto const *const current_state_ptr =
-            account_history.recent_current_state();
-        if (current_state_ptr == nullptr) {
+        if (!account_history.has_current_state()) {
             return true;
         }
         OriginalAccountState const &original_state =
             account_history.original_state();
-        AccountState const &current_state = *current_state_ptr;
+        AccountState const &current_state = account_history.recent_current_state();
 
         // If the original state has no account, then the beneficiary was
         // created during the block and if the current state has an account,
@@ -159,13 +157,13 @@ namespace trace
         StateDeltas state_deltas{};
 
         for (auto const &[address, account_history] : state.history()) {
-            auto const *const current_stack = account_history.current_stack();
-            if (current_stack == nullptr) {
+            if (!account_history.has_current_state()) {
                 continue;
             }
+            auto const &current_stack = account_history.current_stack();
 
             // Possible diff.
-            auto const &current_account_state = current_stack->recent();
+            auto const &current_account_state = current_stack.recent();
             auto const &current_account =
                 get_account_for_trace(current_account_state);
             auto const &current_storage = current_account_state.storage_;
@@ -219,12 +217,12 @@ namespace trace
     {
         auto access_list = json::array();
         for (auto const &[address, account_history] : state.history()) {
-            auto const *const current_stack = account_history.current_stack();
-            if (current_stack == nullptr) {
+            if (!account_history.has_current_state()) {
                 continue;
             }
+            auto const &current_stack = account_history.current_stack();
             auto keys = json::array();
-            auto const &current_account_state = current_stack->recent();
+            auto const &current_account_state = current_stack.recent();
             for (auto const &key :
                  current_account_state.get_accessed_storage()) {
                 keys.push_back(bytes_to_hex(key.bytes));

@@ -271,8 +271,10 @@ void record_account_access_events_internal(
     for (uint32_t index = 0;
          auto const &[address, account_history] : history_map) {
         auto const &prestate = account_history.original_state();
-        CurrentAccountState const *const current_state =
-            account_history.recent_current_state();
+        CurrentAccountState const *current_state = nullptr;
+        if (account_history.has_current_state()) {
+            current_state = &account_history.recent_current_state();
+        }
         record_account_events(
             exec_recorder,
             ctx,

@@ -287,28 +287,22 @@ public:
         return current_.has_value();
     }
 
-    [[nodiscard]] VersionStack<CurrentAccountState> const *current_stack() const
+    [[nodiscard]] VersionStack<CurrentAccountState> const &current_stack() const
     {
-        if (!current_) {
-            return nullptr;
-        }
-        return std::addressof(*current_);
+        MONAD_ASSERT(current_);
+        return *current_;
     }
 
-    [[nodiscard]] VersionStack<CurrentAccountState> *current_stack()
+    [[nodiscard]] VersionStack<CurrentAccountState> &current_stack()
     {
-        if (!current_) {
-            return nullptr;
-        }
-        return std::addressof(*current_);
+        MONAD_ASSERT(current_);
+        return *current_;
     }
 
-    [[nodiscard]] CurrentAccountState const *recent_current_state() const
+    [[nodiscard]] CurrentAccountState const &recent_current_state() const
     {
-        if (!current_) {
-            return nullptr;
-        }
-        return std::addressof(current_->recent());
+        MONAD_ASSERT(current_);
+        return current_->recent();
     }
 
     [[nodiscard]] AccountState const &recent_state() const

@@ -252,8 +252,7 @@ bytes32_t State::get_storage(Address const &address, bytes32_t const &key)
     auto it = history_.find(address);
     MONAD_ASSERT(it != history_.end());
     auto &account_history = it->second;
-    auto const *const current_state = account_history.recent_current_state();
-    if (current_state == nullptr) {
+    if (!account_history.has_current_state()) {
         auto &account_state = account_history.original_state();
         auto const &account = account_state.account_;
         MONAD_ASSERT(account.has_value());
@@ -269,7 +268,7 @@ bytes32_t State::get_storage(Address const &address, bytes32_t const &key)
         }
     }
     else {
-        auto const &account_state = *current_state;
+        auto const &account_state = account_history.recent_current_state();
         auto const &account = account_state.account_;
         MONAD_ASSERT(account.has_value());
         auto const &storage = account_state.storage_;
@@ -303,11 +302,11 @@ State::get_transient_storage(Address const &address, bytes32_t const &key)
     if (it == history_.end()) {
         return {};
     }
-    auto const *const current_state = it->second.recent_current_state();
-    if (current_state == nullptr) {
+    auto const &account_history = it->second;
+    if (!account_history.has_current_state()) {
         return {};
     }
-    return current_state->get_transient_storage(key);
+    return account_history.recent_current_state().get_transient_storage(key);
 }
 
 bool State::is_touched(Address const &address)
@@ -316,11 +315,11 @@ bool State::is_touched(Address const &address)
     if (it == history_.end()) {
         return false;
     }
-    auto const *const current_state = it->second.recent_current_state();
-    if (current_state == nullptr) {
+    auto const &account_history = it->second;
+    if (!account_history.has_current_state()) {
         return false;
     }
-    return current_state->is_touched();
+    return account_history.recent_current_state().is_touched();
 }
 
 void State::set_nonce(Address const &address, uint64_t const nonce)
@@ -463,13 +462,14 @@ void State::destruct_suicides()
     MONAD_ASSERT(!version_);
 
     for (auto &it : history_) {
-        auto *const stack = it.second.current_stack();
-        if (stack == nullptr) {
+        auto &account_history = it.second;
+        if (!account_history.has_current_state()) {
             continue;
         }
-        MONAD_ASSERT(stack->size() == 1);
-        MONAD_ASSERT(stack->version() == 0);
-        auto &account_state = stack->current(0);
+        auto &stack = account_history.current_stack();
+        MONAD_ASSERT(stack.size() == 1);
+        MONAD_ASSERT(stack.version() == 0);
+        auto &account_state = stack.current(0);
         if (account_state.is_destructed()) {
             auto &account = account_state.account_;
             if constexpr (traits::evm_rev() < EVMC_CANCUN) {
@@ -492,13 +492,14 @@ void State::destruct_touched_dead()
     MONAD_ASSERT(!version_);
 
     for (auto &it : history_) {
-        auto *const stack = it.second.current_stack();
-        if (stack == nullptr) {
+        auto &account_history = it.second;
+        if (!account_history.has_current_state()) {
             continue;
         }
-        MONAD_ASSERT(stack->size() == 1);
-        MONAD_ASSERT(stack->version() == 0);
-        auto &account_state = stack->current(0);
+        auto &stack = account_history.current_stack();
+        MONAD_ASSERT(stack.size() == 1);
+        MONAD_ASSERT(stack.version() == 0);
+        auto &account_state = stack.current(0);
         if (MONAD_LIKELY(!account_state.is_touched())) {
             continue;
         }
@@ -690,10 +691,10 @@ bool State::try_fix_account_mismatch(
         return false;
     }
     // adjust balances
-    if (auto *const current_stack = account_history.current_stack();
-        current_stack != nullptr) {
-        MONAD_ASSERT(current_stack->size() == 1);
-        auto &recent_state = current_stack->recent();
+    if (account_history.has_current_state()) {
+        auto &current_stack = account_history.current_stack();
+        MONAD_ASSERT(current_stack.size() == 1);
+        auto &recent_state = current_stack.recent();
         auto &recent = recent_state.account_;
         if (!recent) {
             return false;
