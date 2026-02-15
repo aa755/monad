@@ -95,15 +95,8 @@ struct AccountAccessInfo
             return {0, false};
         }
 
-        std::optional<Account> const &prestate_account =
-            get_account_for_trace(*prestate);
-        std::optional<Account> const &modified_account =
-            get_account_for_trace(*modified_state);
-
-        uint64_t const prestate_nonce =
-            is_dead(prestate_account) ? 0 : prestate_account->nonce;
-        uint64_t const modified_nonce =
-            is_dead(modified_account) ? 0 : modified_account->nonce;
+        uint64_t const prestate_nonce = prestate->get_nonce();
+        uint64_t const modified_nonce = modified_state->get_nonce();
         return {modified_nonce, prestate_nonce != modified_nonce};
     }
 
@@ -113,15 +106,8 @@ struct AccountAccessInfo
             return {0, false};
         }
 
-        std::optional<Account> const &prestate_account =
-            get_account_for_trace(*prestate);
-        std::optional<Account> const &modified_account =
-            get_account_for_trace(*modified_state);
-
-        uint256_t const prestate_balance =
-            is_dead(prestate_account) ? 0 : prestate_account->balance;
-        uint256_t const modified_balance =
-            is_dead(modified_account) ? 0 : modified_account->balance;
+        uint256_t const prestate_balance = prestate->get_balance();
+        uint256_t const modified_balance = modified_state->get_balance();
         return {modified_balance, prestate_balance != modified_balance};
     }
 };
@@ -189,14 +175,9 @@ void record_account_events(
 {
     MONAD_ASSERT(account_info.prestate);
     monad_c_eth_account_state initial_state;
-    std::optional<Account> const &prestate_account =
-        get_account_for_trace(*account_info.prestate);
-    bool const prestate_valid = !is_dead(prestate_account);
-
-    initial_state.nonce = prestate_valid ? prestate_account->nonce : 0;
-    initial_state.balance = prestate_valid ? prestate_account->balance : 0;
-    initial_state.code_hash =
-        prestate_valid ? prestate_account->code_hash : NULL_HASH;
+    initial_state.nonce = account_info.prestate->get_nonce();
+    initial_state.balance = account_info.prestate->get_balance();
+    initial_state.code_hash = account_info.prestate->get_code_hash();
 
     auto const [modified_balance, is_balance_modified] =
         account_info.get_balance_modification();

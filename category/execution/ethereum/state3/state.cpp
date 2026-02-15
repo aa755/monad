@@ -45,7 +45,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -225,17 +224,12 @@ uint64_t State::get_nonce(Address const &address)
 
 uint256_t State::get_balance(Address const &address)
 {
-    auto const &account = recent_account(address);
-    original_account_state(address).set_validate_exact_balance();
-    if (MONAD_LIKELY(account.has_value())) {
-        return account.value().balance;
-    }
-    return 0;
+    return account_history(address).balance_with_exact_validation();
 }
 
 uint256_t State::get_original_balance(Address const &address)
 {
-    return original_account_state(address).get_balance_pessimistic();
+    return account_history(address).original_balance_pessimistic();
 }
 
 bytes32_t State::get_code_hash(Address const &address)
@@ -333,38 +327,37 @@ void State::set_nonce(Address const &address, uint64_t const nonce)
 
 // except in try_fix_account_mismatch(),
 // only use add_to_balance() and subtract_from_balance() to modify balances
+void State::add_to_balance(
+    AccountHistory &history, Address const &address, uint256_t const &delta)
+{
+    if (!dirty_.empty()) {
+        dirty_.back().emplace(address);
+    }
+    history.add_to_balance(version_, incarnation_, delta);
+    rb_.on_credit(address);
+}
+
+void State::subtract_from_balance(
+    AccountHistory &history, Address const &address, uint256_t const &delta)
+{
+    if (!dirty_.empty()) {
+        dirty_.back().emplace(address);
+    }
+    history.subtract_from_balance(version_, incarnation_, delta);
+    rb_.on_debit(address);
+}
+
 void State::add_to_balance(Address const &address, uint256_t const &delta)
 {
-    auto &account_state = current_account_state(address);
-    auto &account = account_state.account_;
-    if (MONAD_UNLIKELY(!account.has_value())) {
-        account = Account{.incarnation = incarnation_};
-    }
-
-    MONAD_ASSERT_THROW(
-        std::numeric_limits<uint256_t>::max() - delta >=
-            account.value().balance,
-        "balance overflow");
-
-    account.value().balance += delta;
-    account_state.touch();
-    rb_.on_credit(address);
+    auto &history = account_history(address);
+    add_to_balance(history, address, delta);
 }
 
 void State::subtract_from_balance(
     Address const &address, uint256_t const &delta)
 {
-    auto &account_state = current_account_state(address);
-    auto &account = account_state.account_;
-    if (MONAD_UNLIKELY(!account.has_value())) {
-        account = Account{.incarnation = incarnation_};
-    }
-
-    MONAD_ASSERT_THROW(delta <= account.value().balance, "balance underflow");
-
-    account.value().balance -= delta;
-    account_state.touch();
-    rb_.on_debit(address);
+    auto &history = account_history(address);
+    subtract_from_balance(history, address, delta);
 }
 
 void State::set_code_hash(Address const &address, bytes32_t const &hash)
@@ -432,21 +425,40 @@ template <Traits traits>
 std::pair<bool, uint256_t>
 State::selfdestruct(Address const &address, Address const &beneficiary)
 {
-    auto &account_state = current_account_state(address);
+    auto &sender_history = account_history(address);
+    if (!dirty_.empty()) {
+        dirty_.back().emplace(address);
+    }
+    auto &account_state = sender_history.current_state(version_);
     auto &account = account_state.account_;
     MONAD_ASSERT(account.has_value());
     auto const initial_balance = account.value().balance;
 
     if constexpr (traits::evm_rev() < EVMC_CANCUN) {
-        add_to_balance(beneficiary, account.value().balance);
-        subtract_from_balance(address, account.value().balance);
-        original_account_state(address).set_validate_exact_balance();
+        if (address == beneficiary) {
+            add_to_balance(sender_history, address, account.value().balance);
+        }
+        else {
+            auto &beneficiary_history = account_history(beneficiary);
+            add_to_balance(
+                beneficiary_history, beneficiary, account.value().balance);
+        }
+        subtract_from_balance(sender_history, address, account.value().balance);
+        sender_history.original_state().set_validate_exact_balance();
     }
     else {
         if (address != beneficiary || account->incarnation == incarnation_) {
-            add_to_balance(beneficiary, account.value().balance);
-            subtract_from_balance(address, account.value().balance);
-            original_account_state(address).set_validate_exact_balance();
+            if (address == beneficiary) {
+                add_to_balance(sender_history, address, account.value().balance);
+            }
+            else {
+                auto &beneficiary_history = account_history(beneficiary);
+                add_to_balance(
+                    beneficiary_history, beneficiary, account.value().balance);
+            }
+            subtract_from_balance(
+                sender_history, address, account.value().balance);
+            sender_history.original_state().set_validate_exact_balance();
         }
     }
 

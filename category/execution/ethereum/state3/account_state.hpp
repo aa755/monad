@@ -20,6 +20,7 @@
 #include <category/core/config.hpp>
 #include <category/core/int.hpp>
 #include <category/core/likely.h>
+#include <category/core/monad_exception.hpp>
 #include <category/execution/ethereum/core/account.hpp>
 #include <category/execution/ethereum/state3/account_substate.hpp>
 #include <category/execution/ethereum/state3/version_stack.hpp>
@@ -35,6 +36,7 @@
 #pragma GCC diagnostic pop
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -62,12 +64,9 @@ protected:
 private:
     friend class State;
     friend class BlockState;
-
-    friend std::optional<Account> const &
-    get_account_for_trace(AccountState const &as)
-    {
-        return as.account_;
-    }
+    friend class AccountHistory;
+    friend struct trace::PrestateTracer;
+    friend struct trace::StateDiffTracer;
 
 public:
     StorageMap storage_{};
@@ -113,6 +112,14 @@ public:
     {
         if (MONAD_LIKELY(account_.has_value())) {
             return account_->nonce;
+        }
+        return 0;
+    }
+
+    [[nodiscard]] uint256_t get_balance() const
+    {
+        if (MONAD_LIKELY(account_.has_value())) {
+            return account_->balance;
         }
         return 0;
     }
@@ -277,23 +284,12 @@ public:
         return original_;
     }
 
-    [[nodiscard]] OriginalAccountState &original_state()
-    {
-        return original_;
-    }
-
     [[nodiscard]] bool has_current_state() const
     {
         return current_.has_value();
     }
 
     [[nodiscard]] VersionStack<CurrentAccountState> const &current_stack() const
-    {
-        MONAD_ASSERT(current_);
-        return *current_;
-    }
-
-    [[nodiscard]] VersionStack<CurrentAccountState> &current_stack()
     {
         MONAD_ASSERT(current_);
         return *current_;
@@ -313,6 +309,20 @@ public:
         return original_;
     }
 
+private:
+    friend class State;
+
+    [[nodiscard]] OriginalAccountState &original_state()
+    {
+        return original_;
+    }
+
+    [[nodiscard]] VersionStack<CurrentAccountState> &current_stack()
+    {
+        MONAD_ASSERT(current_);
+        return *current_;
+    }
+
     [[nodiscard]] CurrentAccountState &current_state(unsigned const version)
     {
         if (!current_) {
@@ -321,29 +331,39 @@ public:
         return current_->current(version);
     }
 
-    [[nodiscard]] uint256_t recent_balance() const
+    void add_to_balance(
+        unsigned const version, Incarnation const &incarnation,
+        uint256_t const &delta)
     {
-        auto const &recent_account = get_account_for_trace(recent_state());
-        if (recent_account.has_value()) {
-            return recent_account->balance;
+        auto &account_state = current_state(version);
+        auto &account = account_state.account_;
+        if (MONAD_UNLIKELY(!account.has_value())) {
+            account = Account{.incarnation = incarnation};
         }
-        return 0;
+
+        MONAD_ASSERT_THROW(
+            std::numeric_limits<uint256_t>::max() - delta >=
+                account.value().balance,
+            "balance overflow");
+
+        account.value().balance += delta;
+        account_state.touch();
     }
 
-    [[nodiscard]] bool record_min_balance_for_debit(uint256_t const &debit)
+    void subtract_from_balance(
+        unsigned const version, Incarnation const &incarnation,
+        uint256_t const &delta)
     {
-        uint256_t const balance = recent_balance();
-        if (balance >= debit) {
-            uint256_t const diff = balance - debit;
-            uint256_t const original_balance = original_.get_balance_or_zero();
-            if (original_balance > diff) {
-                original_.set_min_balance(original_balance - diff);
-            }
-            return true;
+        auto &account_state = current_state(version);
+        auto &account = account_state.account_;
+        if (MONAD_UNLIKELY(!account.has_value())) {
+            account = Account{.incarnation = incarnation};
         }
 
-        original_.set_validate_exact_balance();
-        return false;
+        MONAD_ASSERT_THROW(delta <= account.value().balance, "balance underflow");
+
+        account.value().balance -= delta;
+        account_state.touch();
     }
 
     void pop_accept(unsigned const version)
@@ -359,6 +379,36 @@ public:
             current_.reset();
         }
     }
+
+public:
+
+    [[nodiscard]] uint256_t balance_with_exact_validation()
+    {
+        original_.set_validate_exact_balance();
+        return recent_state().get_balance();
+    }
+
+    [[nodiscard]] uint256_t original_balance_pessimistic()
+    {
+        return original_.get_balance_pessimistic();
+    }
+
+    [[nodiscard]] bool record_min_balance_for_debit(uint256_t const &debit)
+    {
+        uint256_t const balance = recent_state().get_balance();
+        if (balance >= debit) {
+            uint256_t const diff = balance - debit;
+            uint256_t const original_balance = original_.get_balance_or_zero();
+            if (original_balance > diff) {
+                original_.set_min_balance(original_balance - diff);
+            }
+            return true;
+        }
+
+        original_.set_validate_exact_balance();
+        return false;
+    }
+
 };
 
 MONAD_NAMESPACE_END
