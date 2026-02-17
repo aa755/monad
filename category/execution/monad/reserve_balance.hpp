@@ -28,7 +28,6 @@
 #include <evmc/evmc.h>
 
 #include <cstdint>
-#include <functional>
 #include <optional>
 
 MONAD_NAMESPACE_BEGIN
@@ -45,33 +44,42 @@ class ReserveBalance
         Address, std::optional<uint256_t>>;
 
     State *state_;
-    bool tracking_enabled_{false};
-    bool use_recent_code_hash_{false};
+    bool tracking_context_initialized_{false};
     Address sender_{};
     uint256_t sender_gas_fees_{0};
     bool sender_can_dip_{false};
     FailedSet failed_{};
     ViolationThresholdMap violation_thresholds_{};
-    std::function<uint256_t(Address const &)> get_max_reserve_{};
 
+    template <Traits traits>
+        requires is_monad_trait_v<traits>
     bool subject_account(Address const &);
+    template <Traits traits>
+        requires is_monad_trait_v<traits>
     uint256_t pretx_reserve(Address const &);
+    template <Traits traits>
+        requires is_monad_trait_v<traits>
     void update_violation_status(Address const &);
 
 public:
     explicit ReserveBalance(State *state);
 
+    template <Traits traits>
     bool tracking_enabled() const;
-
+    template <Traits traits>
     bool has_violation() const;
 
     bool failed_contains(Address const &address) const;
 
+    template <Traits traits>
     void on_credit(Address const &);
+    template <Traits traits>
     void on_debit(Address const &);
 
+    template <Traits traits>
     void on_pop_reject(FailedSet const &accounts);
 
+    template <Traits traits>
     void on_set_code(Address const &address, byte_string_view const code);
 
     template <Traits traits>

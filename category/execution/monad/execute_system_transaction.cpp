@@ -204,7 +204,7 @@ Result<void> ExecuteSystemTransaction<traits>::execute_staking_syscall(
     State &state, byte_string_view calldata, uint256_t const &value)
 {
     // creates staking account in state if it doesn't exist
-    state.add_to_balance(staking::STAKING_CA, 0);
+    state.add_to_balance<traits>(staking::STAKING_CA, 0);
 
     staking::StakingContract contract(state, call_tracer_);
     if (MONAD_UNLIKELY(calldata.size() < 4)) {

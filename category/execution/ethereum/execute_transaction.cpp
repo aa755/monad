@@ -67,7 +67,7 @@ constexpr void irrevocable_change(
     }
     auto const upfront_cost =
         tx.gas_limit * gas_price<traits>(tx, base_fee_per_gas);
-    state.subtract_from_balance(sender, upfront_cost + blob_gas);
+    state.subtract_from_balance<traits>(sender, upfront_cost + blob_gas);
 }
 
 MONAD_ANONYMOUS_NAMESPACE_END
@@ -168,12 +168,12 @@ uint64_t ExecuteTransactionNoValidation<traits>::process_authorizations(
                 byte_string(vm::evm::delegation_indicator_prefix()) +
                 byte_string(
                     auth_entry.address.bytes, auth_entry.address.bytes + 20);
-            state.set_code(*authority, new_code);
+            state.set_code<traits>(*authority, new_code);
         }
         else {
             // If address is 0x0000000000000000000000000000000000000000, do not
             // write the delegation indicator. Clear the account’s code
-            state.set_code(*authority, {});
+            state.set_code<traits>(*authority, {});
         }
 
         // 9. Increase the nonce of authority by one.
@@ -354,7 +354,7 @@ Receipt ExecuteTransaction<traits>::execute_final(
         static_cast<uint64_t>(result.gas_refund));
     auto const gas_cost =
         gas_price<traits>(tx_, header_.base_fee_per_gas.value_or(0));
-    state.add_to_balance(sender_, gas_cost * gas_refund);
+    state.add_to_balance<traits>(sender_, gas_cost * gas_refund);
 
     auto gas_used = tx_.gas_limit - gas_refund;
 
@@ -363,7 +363,7 @@ Receipt ExecuteTransaction<traits>::execute_final(
         auto const floor_gas = floor_data_gas(tx_);
         if (gas_used < floor_gas) {
             auto const delta = floor_gas - gas_used;
-            state.subtract_from_balance(sender_, gas_cost * delta);
+            state.subtract_from_balance<traits>(sender_, gas_cost * delta);
 
             gas_used = floor_gas;
         }
@@ -371,7 +371,7 @@ Receipt ExecuteTransaction<traits>::execute_final(
 
     auto const reward = calculate_txn_award<traits>(
         tx_, header_.base_fee_per_gas.value_or(0), gas_used);
-    state.add_to_balance(header_.beneficiary, reward);
+    state.add_to_balance<traits>(header_.beneficiary, reward);
 
     // finalize state, Eqn. 77-79
     state.destruct_suicides<traits>();

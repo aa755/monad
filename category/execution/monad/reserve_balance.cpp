@@ -53,8 +53,19 @@ MONAD_ANONYMOUS_NAMESPACE_BEGIN
 template <Traits traits>
 bool dipped_into_reserve(State &state)
 {
-    MONAD_ASSERT(state.reserve_balance_tracking_enabled());
-    return state.reserve_balance_has_violation();
+    MONAD_ASSERT(state.reserve_balance_tracking_enabled<traits>());
+    return state.reserve_balance_has_violation<traits>();
+}
+
+template <Traits traits>
+constexpr bool reserve_tracking_supported()
+{
+    if constexpr (!is_monad_trait_v<traits>) {
+        return false;
+    }
+    else {
+        return traits::monad_rev() >= MONAD_FOUR;
+    }
 }
 
 MONAD_ANONYMOUS_NAMESPACE_END
@@ -66,14 +77,26 @@ ReserveBalance::ReserveBalance(State *state)
 {
 }
 
+template <Traits traits>
 bool ReserveBalance::tracking_enabled() const
 {
-    return tracking_enabled_;
+    if constexpr (reserve_tracking_supported<traits>()) {
+        return tracking_context_initialized_;
+    }
+    else {
+        return false;
+    }
 }
 
+template <Traits traits>
 bool ReserveBalance::has_violation() const
 {
-    return !failed_.empty();
+    if constexpr (reserve_tracking_supported<traits>()) {
+        return !failed_.empty();
+    }
+    else {
+        return false;
+    }
 }
 
 bool ReserveBalance::failed_contains(Address const &address) const
@@ -81,40 +104,51 @@ bool ReserveBalance::failed_contains(Address const &address) const
     return failed_.contains(address);
 }
 
+template <Traits traits>
+    requires is_monad_trait_v<traits>
 bool ReserveBalance::subject_account(Address const &address)
 {
     OriginalAccountState &orig_state = state_->original_account_state(address);
-    bytes32_t const effective_code_hash = use_recent_code_hash_
-                                              ? state_->get_code_hash(address)
-                                              : orig_state.get_code_hash();
+    bytes32_t const effective_code_hash =
+        [](State &state, OriginalAccountState &original, Address const &acct) {
+            if constexpr (traits::monad_rev() >= MONAD_EIGHT) {
+                return state.get_code_hash(acct);
+            }
+            else {
+                return original.get_code_hash();
+            }
+        }(*state_, orig_state, address);
     if (effective_code_hash == NULL_HASH) {
         return true;
     }
     return state_->is_delegated(effective_code_hash);
 }
 
+template <Traits traits>
+    requires is_monad_trait_v<traits>
 uint256_t ReserveBalance::pretx_reserve(Address const &address)
 {
-    MONAD_ASSERT(get_max_reserve_);
-    uint256_t const max_reserve = get_max_reserve_(address);
+    uint256_t const max_reserve = get_max_reserve<traits>(address);
     return std::min(max_reserve, state_->get_original_balance(address));
 }
 
+template <Traits traits>
+    requires is_monad_trait_v<traits>
 void ReserveBalance::update_violation_status(Address const &address)
 {
-    if (!tracking_enabled_) {
+    if (!tracking_context_initialized_) {
         return;
     }
 
     auto &violation_threshold = violation_thresholds_[address];
     if (!violation_threshold.has_value()) {
-        if (!subject_account(address)) {
+        if (!subject_account<traits>(address)) {
             violation_threshold = uint256_t{0};
             failed_.erase(address);
             return;
         }
 
-        uint256_t reserve = pretx_reserve(address);
+        uint256_t reserve = pretx_reserve<traits>(address);
         if (address == sender_) {
             if (sender_can_dip_) {
                 violation_threshold = uint256_t{0};
@@ -142,49 +176,60 @@ void ReserveBalance::update_violation_status(Address const &address)
     }
 }
 
+template <Traits traits>
 void ReserveBalance::on_credit(Address const &address)
 {
-    if (!tracking_enabled_) {
-        return;
-    }
-    if (failed_.contains(address)) {
-        update_violation_status(address);
+    if constexpr (reserve_tracking_supported<traits>()) {
+        if (!tracking_context_initialized_) {
+            return;
+        }
+        if (failed_.contains(address)) {
+            update_violation_status<traits>(address);
+        }
     }
 }
 
+template <Traits traits>
 void ReserveBalance::on_debit(Address const &address)
 {
-    update_violation_status(address);
+    if constexpr (reserve_tracking_supported<traits>()) {
+        update_violation_status<traits>(address);
+    }
 }
 
+template <Traits traits>
 void ReserveBalance::on_pop_reject(FailedSet const &accounts)
 {
-    if (!tracking_enabled_) {
-        return;
-    }
-    for (auto const &dirty_address : accounts) {
-        violation_thresholds_[dirty_address].reset();
-        update_violation_status(dirty_address);
+    if constexpr (reserve_tracking_supported<traits>()) {
+        if (!tracking_context_initialized_) {
+            return;
+        }
+        for (auto const &dirty_address : accounts) {
+            violation_thresholds_[dirty_address].reset();
+            update_violation_status<traits>(dirty_address);
+        }
     }
 }
 
+template <Traits traits>
 void ReserveBalance::on_set_code(
     Address const &address, byte_string_view const code)
 {
-    if (!tracking_enabled_) {
-        return;
+    if constexpr (reserve_tracking_supported<traits>()) {
+        if constexpr (traits::monad_rev() >= MONAD_EIGHT) {
+            if (!tracking_context_initialized_) {
+                return;
+            }
+            auto &violation_threshold = violation_thresholds_[address];
+            if (!vm::evm::is_delegated({code.data(), code.size()})) {
+                violation_threshold = uint256_t{0};
+                failed_.erase(address);
+                return;
+            }
+            violation_threshold.reset();
+            update_violation_status<traits>(address);
+        }
     }
-    if (!use_recent_code_hash_) {
-        return;
-    }
-    auto &violation_threshold = violation_thresholds_[address];
-    if (!vm::evm::is_delegated({code.data(), code.size()})) {
-        violation_threshold = uint256_t{0};
-        failed_.erase(address);
-        return;
-    }
-    violation_threshold.reset();
-    update_violation_status(address);
 }
 
 template <Traits traits>
@@ -193,49 +238,46 @@ void ReserveBalance::init_from_tx(
     std::optional<uint256_t> const &base_fee_per_gas, uint64_t i,
     ChainContext<traits> const &ctx)
 {
-    constexpr bool tracking_disabled = []() {
-        if constexpr (!is_monad_trait_v<traits>) {
-            return true;
-        }
-        else {
-            return traits::monad_rev() < MONAD_FOUR;
-        }
-    }();
-
-    if constexpr (tracking_disabled) {
-        tracking_enabled_ = false;
-        use_recent_code_hash_ = false;
+    if constexpr (!reserve_tracking_supported<traits>()) {
+        tracking_context_initialized_ = false;
         sender_ = {};
         sender_gas_fees_ = 0;
         sender_can_dip_ = false;
-        get_max_reserve_ = {};
         failed_.clear();
+        violation_thresholds_.clear();
         return;
     }
 
     MONAD_ASSERT(i < ctx.senders.size());
     MONAD_ASSERT(i < ctx.authorities.size());
     MONAD_ASSERT(ctx.senders.size() == ctx.authorities.size());
-    use_recent_code_hash_ = traits::monad_rev() >= MONAD_EIGHT;
-    bytes32_t const sender_code_hash =
-        use_recent_code_hash_
-            ? state_->get_code_hash(sender)
-            : state_->original_account_state(sender).get_code_hash();
+    bytes32_t const sender_code_hash = [](State &state,
+                                          Address const &sender_address) {
+        if constexpr (traits::monad_rev() >= MONAD_EIGHT) {
+            return state.get_code_hash(sender_address);
+        }
+        else {
+            return state.original_account_state(sender_address).get_code_hash();
+        }
+    }(*state_, sender);
     bool const sender_can_dip = can_sender_dip_into_reserve<traits>(
         sender, i, state_->is_delegated(sender_code_hash), ctx);
-    tracking_enabled_ = true;
+    tracking_context_initialized_ = true;
     sender_ = sender;
     sender_gas_fees_ = uint256_t{tx.gas_limit} *
                        gas_price<traits>(tx, base_fee_per_gas.value_or(0));
     sender_can_dip_ = sender_can_dip;
-    get_max_reserve_ = [](Address const &addr) {
-        return get_max_reserve<traits>(addr);
-    };
     failed_.clear();
     violation_thresholds_.clear();
 }
 
 EXPLICIT_MONAD_TRAITS_MEMBER(ReserveBalance::init_from_tx);
+EXPLICIT_TRAITS_MEMBER(ReserveBalance::tracking_enabled);
+EXPLICIT_TRAITS_MEMBER(ReserveBalance::has_violation);
+EXPLICIT_TRAITS_MEMBER(ReserveBalance::on_credit);
+EXPLICIT_TRAITS_MEMBER(ReserveBalance::on_debit);
+EXPLICIT_TRAITS_MEMBER(ReserveBalance::on_pop_reject);
+EXPLICIT_TRAITS_MEMBER(ReserveBalance::on_set_code);
 
 template <Traits traits>
 bool revert_transaction(State &state)

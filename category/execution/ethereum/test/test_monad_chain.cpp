@@ -170,14 +170,14 @@ void run_revert_transaction_test(
         State state{bs, Incarnation{0, 0}};
         uint256_t const initial_balance =
             uint256_t{initial_balance_mon} * 1000000000000000000ULL;
-        state.add_to_balance(SENDER, initial_balance);
+        state.add_to_balance<traits>(SENDER, initial_balance);
         if (prevent_dip_bitset & (1 << IsDelegated)) {
             byte_string const code{
                 0xef, 0x01, 0x00, 0x02, 0x02, 0x02, 0x02, 0x02,
                 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
                 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
             };
-            state.set_code(SENDER, code);
+            state.set_code<traits>(SENDER, code);
         }
         MONAD_ASSERT(bs.can_merge(state));
         bs.merge(state);
@@ -244,9 +244,9 @@ void run_revert_transaction_test(
         State state{bs, Incarnation{1, 1}};
         state.init_reserve_balance_context<traits>(
             SENDER, tx, BASE_FEE_PER_GAS, 1, chain_context);
-        state.subtract_from_balance(SENDER, gas_fee);
+        state.subtract_from_balance<traits>(SENDER, gas_fee);
         uint256_t const value = uint256_t{value_mon} * 1000000000000000000ULL;
-        state.subtract_from_balance(SENDER, value);
+        state.subtract_from_balance<traits>(SENDER, value);
         bool should_revert = revert_transaction<traits>(state);
 
         EXPECT_EQ(should_revert, expected)
@@ -424,8 +424,8 @@ TYPED_TEST(MonadTraitsTest, reserve_checks_code_hash)
 
     {
         State init_state{bs, Incarnation{0, 0}};
-        init_state.add_to_balance(SENDER, to_wei(20));
-        init_state.add_to_balance(NEW_CONTRACT, to_wei(3));
+        init_state.add_to_balance<traits>(SENDER, to_wei(20));
+        init_state.add_to_balance<traits>(NEW_CONTRACT, to_wei(3));
         MONAD_ASSERT(bs.can_merge(init_state));
         bs.merge(init_state);
     }
@@ -458,10 +458,10 @@ TYPED_TEST(MonadTraitsTest, reserve_checks_code_hash)
     auto const prepare_state = [&](State &state) {
         state.init_reserve_balance_context<traits>(
             SENDER, tx, BASE_FEE_PER_GAS, 0, context);
-        state.subtract_from_balance(SENDER, gas_cost);
-        state.subtract_from_balance(NEW_CONTRACT, to_wei(3));
+        state.subtract_from_balance<traits>(SENDER, gas_cost);
+        state.subtract_from_balance<traits>(NEW_CONTRACT, to_wei(3));
         byte_string const contract_code{0x60, 0x00};
-        state.set_code(NEW_CONTRACT, contract_code);
+        state.set_code<traits>(NEW_CONTRACT, contract_code);
     };
 
     State state{bs, Incarnation{1, 1}};

@@ -51,11 +51,12 @@ bool sender_has_balance(State &state, evmc_message const &msg) noexcept
     return state.record_balance_constraint_for_debit(msg.sender, value);
 }
 
+template <Traits traits>
 void transfer_balances(State &state, evmc_message const &msg, Address const &to)
 {
     uint256_t const value = intx::be::load<uint256_t>(msg.value);
-    state.subtract_from_balance(msg.sender, value);
-    state.add_to_balance(to, value);
+    state.subtract_from_balance<traits>(msg.sender, value);
+    state.add_to_balance<traits>(to, value);
 }
 
 MONAD_ANONYMOUS_NAMESPACE_END
@@ -90,7 +91,7 @@ evmc::Result deploy_contract_code(
             // fee, however, the value is still transferred and the
             // execution side- effects take place."
             result.create_address = address;
-            state.set_code(address, {});
+            state.set_code<traits>(address, {});
         }
         else {
             // EIP-2: If contract creation does not have enough gas to
@@ -103,7 +104,8 @@ evmc::Result deploy_contract_code(
     else {
         result.create_address = address;
         result.gas_left -= deploy_cost;
-        state.set_code(address, {result.output_data, result.output_size});
+        state.set_code<traits>(
+            address, {result.output_data, result.output_size});
     }
     return result;
 }
@@ -119,11 +121,11 @@ std::optional<evmc::Result> pre_call(evmc_message const &msg, State &state)
 
     if (msg.kind != EVMC_DELEGATECALL) {
         if (MONAD_UNLIKELY(!sender_has_balance(state, msg))) {
-            state.pop_reject();
+            state.pop_reject<traits>();
             return evmc::Result{EVMC_INSUFFICIENT_BALANCE, msg.gas};
         }
         else if (!static_call) {
-            transfer_balances(state, msg, msg.recipient);
+            transfer_balances<traits>(state, msg, msg.recipient);
         }
     }
 
@@ -141,6 +143,7 @@ std::optional<evmc::Result> pre_call(evmc_message const &msg, State &state)
     return std::nullopt;
 }
 
+template <Traits traits>
 void post_call(State &state, evmc::Result const &result)
 {
     MONAD_ASSERT(result.status_code == EVMC_SUCCESS || result.gas_refund == 0);
@@ -155,7 +158,7 @@ void post_call(State &state, evmc::Result const &result)
     }
     else {
         bool const ripemd_touched = state.is_touched(ripemd_address);
-        state.pop_reject();
+        state.pop_reject<traits>();
         if (MONAD_UNLIKELY(ripemd_touched)) {
             // YP K.1. Deletion of an Account Despite Out-of-gas.
             state.touch(ripemd_address);
@@ -234,7 +237,7 @@ create(EvmcHost<traits> *const host, State &state, evmc_message const &msg)
     constexpr auto starting_nonce =
         traits::evm_rev() >= EVMC_SPURIOUS_DRAGON ? 1 : 0;
     state.set_nonce(contract_address, starting_nonce);
-    transfer_balances(state, msg, contract_address);
+    transfer_balances<traits>(state, msg, contract_address);
 
     evmc_message const m_call{
         .kind = EVMC_CALL,
@@ -276,7 +279,7 @@ create(EvmcHost<traits> *const host, State &state, evmc_message const &msg)
             result.gas_left = 0;
         }
         bool const ripemd_touched = state.is_touched(ripemd_address);
-        state.pop_reject();
+        state.pop_reject<traits>();
         if (MONAD_UNLIKELY(ripemd_touched)) {
             // YP K.1. Deletion of an Account Despite Out-of-gas.
             state.touch(ripemd_address);
@@ -325,7 +328,7 @@ call(EvmcHost<traits> *const host, State &state, evmc_message const &msg)
         }
     }
 
-    post_call(state, result);
+    post_call<traits>(state, result);
     call_tracer.on_exit(result);
     return result;
 }

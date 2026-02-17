@@ -105,14 +105,16 @@ State::State(
 {
 }
 
+template <Traits traits>
 bool State::reserve_balance_tracking_enabled() const
 {
-    return rb_.tracking_enabled();
+    return rb_.tracking_enabled<traits>();
 }
 
+template <Traits traits>
 bool State::reserve_balance_has_violation() const
 {
-    return rb_.has_violation();
+    return rb_.has_violation<traits>();
 }
 
 bool State::is_delegated(bytes32_t const &code_hash)
@@ -170,6 +172,7 @@ void State::pop_accept()
     --version_;
 }
 
+template <Traits traits>
 void State::pop_reject()
 {
     MONAD_ASSERT(version_);
@@ -193,9 +196,14 @@ void State::pop_reject()
         removals.pop_back();
     }
 
-    rb_.on_pop_reject(accounts);
+    rb_.on_pop_reject<traits>(accounts);
 
     --version_;
+}
+
+void State::pop_reject()
+{
+    pop_reject<EvmTraits<EVMC_PRAGUE>>();
 }
 
 vm::VM &State::vm()
@@ -334,6 +342,7 @@ void State::set_nonce(Address const &address, uint64_t const nonce)
 
 // except in try_fix_account_mismatch(),
 // only use add_to_balance() and subtract_from_balance() to modify balances
+template <Traits traits>
 void State::add_to_balance(Address const &address, uint256_t const &delta)
 {
     auto &account_state = current_account_state(address);
@@ -349,9 +358,15 @@ void State::add_to_balance(Address const &address, uint256_t const &delta)
 
     account.value().balance += delta;
     account_state.touch();
-    rb_.on_credit(address);
+    rb_.on_credit<traits>(address);
 }
 
+void State::add_to_balance(Address const &address, uint256_t const &delta)
+{
+    add_to_balance<EvmTraits<EVMC_PRAGUE>>(address, delta);
+}
+
+template <Traits traits>
 void State::subtract_from_balance(
     Address const &address, uint256_t const &delta)
 {
@@ -365,7 +380,13 @@ void State::subtract_from_balance(
 
     account.value().balance -= delta;
     account_state.touch();
-    rb_.on_debit(address);
+    rb_.on_debit<traits>(address);
+}
+
+void State::subtract_from_balance(
+    Address const &address, uint256_t const &delta)
+{
+    subtract_from_balance<EvmTraits<EVMC_PRAGUE>>(address, delta);
 }
 
 evmc_storage_status State::set_storage(
@@ -432,14 +453,14 @@ State::selfdestruct(Address const &address, Address const &beneficiary)
     auto const initial_balance = account.value().balance;
 
     if constexpr (traits::evm_rev() < EVMC_CANCUN) {
-        add_to_balance(beneficiary, account.value().balance);
-        subtract_from_balance(address, account.value().balance);
+        add_to_balance<traits>(beneficiary, account.value().balance);
+        subtract_from_balance<traits>(address, account.value().balance);
         original_account_state(address).set_validate_exact_balance();
     }
     else {
         if (address != beneficiary || account->incarnation == incarnation_) {
-            add_to_balance(beneficiary, account.value().balance);
-            subtract_from_balance(address, account.value().balance);
+            add_to_balance<traits>(beneficiary, account.value().balance);
+            subtract_from_balance<traits>(address, account.value().balance);
             original_account_state(address).set_validate_exact_balance();
         }
     }
@@ -448,6 +469,12 @@ State::selfdestruct(Address const &address, Address const &beneficiary)
 }
 
 EXPLICIT_TRAITS_MEMBER(State::selfdestruct);
+EXPLICIT_TRAITS_MEMBER(State::reserve_balance_tracking_enabled);
+EXPLICIT_TRAITS_MEMBER(State::reserve_balance_has_violation);
+EXPLICIT_TRAITS_MEMBER(State::pop_reject);
+EXPLICIT_TRAITS_MEMBER(State::add_to_balance);
+EXPLICIT_TRAITS_MEMBER(State::subtract_from_balance);
+EXPLICIT_TRAITS_MEMBER(State::set_code);
 
 // YP (87)
 template <Traits traits>
@@ -566,6 +593,7 @@ size_t State::copy_code(
     return n;
 }
 
+template <Traits traits>
 void State::set_code(Address const &address, byte_string_view const code)
 {
     auto &account = current_account(address);
@@ -576,7 +604,12 @@ void State::set_code(Address const &address, byte_string_view const code)
     auto const code_hash = to_bytes(keccak256(code));
     code_[code_hash] = vm().try_insert_varcode_raw(code_hash, code);
     account.value().code_hash = code_hash;
-    rb_.on_set_code(address, code);
+    rb_.on_set_code<traits>(address, code);
+}
+
+void State::set_code(Address const &address, byte_string_view const code)
+{
+    set_code<EvmTraits<EVMC_PRAGUE>>(address, code);
 }
 
 void State::create_contract(Address const &address)

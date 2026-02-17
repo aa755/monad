@@ -55,7 +55,7 @@ void deploy_block_hash_history_contract(State &state)
     // happy path: deploy contract if it doesn't exist
     if (MONAD_UNLIKELY(!state.account_exists(BLOCK_HISTORY_ADDRESS))) {
         state.create_contract(BLOCK_HISTORY_ADDRESS);
-        state.set_code(BLOCK_HISTORY_ADDRESS, BLOCK_HISTORY_CODE);
+        state.set_code<traits>(BLOCK_HISTORY_ADDRESS, BLOCK_HISTORY_CODE);
         MONAD_ASSERT(
             state.get_code_hash(BLOCK_HISTORY_ADDRESS) ==
             BLOCK_HISTORY_CODE_HASH);
@@ -68,7 +68,8 @@ void deploy_block_hash_history_contract(State &state)
             if (MONAD_UNLIKELY(
                     state.get_code_hash(BLOCK_HISTORY_ADDRESS) !=
                     BLOCK_HISTORY_CODE_HASH)) {
-                state.set_code(BLOCK_HISTORY_ADDRESS, BLOCK_HISTORY_CODE);
+                state.set_code<traits>(
+                    BLOCK_HISTORY_ADDRESS, BLOCK_HISTORY_CODE);
             }
         }
     }

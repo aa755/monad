@@ -102,7 +102,7 @@ TEST_F(ReserveBalanceEvm, precompile_fallback)
         .code_address = RESERVE_BALANCE_CA,
     };
 
-    if (!state.reserve_balance_tracking_enabled()) {
+    if (!state.reserve_balance_tracking_enabled<MonadTraits<MONAD_NEXT>>()) {
         state.init_reserve_balance_context<MonadTraits<MONAD_NEXT>>(
             Address{m.sender},
             empty_tx,

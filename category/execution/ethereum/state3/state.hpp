@@ -103,6 +103,8 @@ public:
     void pop_accept();
 
     void pop_reject();
+    template <Traits traits>
+    void pop_reject();
 
     ////////////////////////////////////////
 
@@ -136,7 +138,11 @@ public:
     void set_nonce(Address const &, uint64_t nonce);
 
     void add_to_balance(Address const &, uint256_t const &delta);
+    template <Traits traits>
+    void add_to_balance(Address const &, uint256_t const &delta);
 
+    void subtract_from_balance(Address const &, uint256_t const &delta);
+    template <Traits traits>
     void subtract_from_balance(Address const &, uint256_t const &delta);
 
     evmc_storage_status
@@ -176,6 +182,8 @@ public:
         Address const &, size_t offset, uint8_t *buffer, size_t buffer_size);
 
     void set_code(Address const &, byte_string_view code);
+    template <Traits traits>
+    void set_code(Address const &, byte_string_view code);
 
     ////////////////////////////////////////
 
@@ -197,7 +205,9 @@ public:
 
     ////////////////////////////////////////
 
+    template <Traits traits>
     [[nodiscard]] bool reserve_balance_tracking_enabled() const;
+    template <Traits traits>
     [[nodiscard]] bool reserve_balance_has_violation() const;
 
     bool is_delegated(bytes32_t const &code_hash);

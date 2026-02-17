@@ -66,28 +66,31 @@
 MONAD_ANONYMOUS_NAMESPACE_BEGIN
 
 // EIP-4895
+template <Traits traits>
 void process_withdrawal(
     State &state, std::optional<std::vector<Withdrawal>> const &withdrawals)
 {
     if (withdrawals.has_value()) {
         for (auto const &withdrawal : withdrawals.value()) {
-            state.add_to_balance(
+            state.add_to_balance<traits>(
                 withdrawal.recipient,
                 uint256_t{withdrawal.amount} * uint256_t{1'000'000'000u});
         }
     }
 }
 
+template <Traits traits>
 void transfer_balance_dao(State &state)
 {
     for (auto const &addr : dao::child_accounts) {
         uint256_t const balance = state.get_balance(addr);
-        state.add_to_balance(dao::withdraw_account, balance);
-        state.subtract_from_balance(addr, balance);
+        state.add_to_balance<traits>(dao::withdraw_account, balance);
+        state.subtract_from_balance<traits>(addr, balance);
     }
 }
 
 // EIP-4788
+template <Traits traits>
 void set_beacon_root(State &state, BlockHeader const &header)
 {
     constexpr auto BEACON_ROOTS_ADDRESS{
@@ -186,14 +189,14 @@ void execute_block_header(
     set_block_hash_history<traits>(state, header);
 
     if constexpr (traits::evm_rev() >= EVMC_CANCUN) {
-        set_beacon_root(state, header);
+        set_beacon_root<traits>(state, header);
     }
 
     // Ethereum mainnet dao fork
     if constexpr (traits::evm_rev() == EVMC_HOMESTEAD) {
         if (MONAD_UNLIKELY(header.number == dao::dao_block_number)) {
             if (chain.get_chain_id() == 1) {
-                transfer_balance_dao(state);
+                transfer_balance_dao<traits>(state);
             }
         }
     }
@@ -361,7 +364,7 @@ Result<std::vector<Receipt>> execute_block(
         block_state, Incarnation{block.header.number, Incarnation::LAST_TX}};
 
     if constexpr (traits::evm_rev() >= EVMC_SHANGHAI) {
-        process_withdrawal(state, block.withdrawals);
+        process_withdrawal<traits>(state, block.withdrawals);
     }
 
     apply_block_reward<traits>(state, block);
