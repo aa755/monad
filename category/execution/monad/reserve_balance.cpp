@@ -27,6 +27,7 @@
 #include <category/execution/monad/chain/monad_chain.hpp>
 #include <category/execution/monad/reserve_balance.h>
 #include <category/execution/monad/reserve_balance.hpp>
+#include <category/execution/monad/staking/util/constants.hpp>
 #include <category/vm/code.hpp>
 #include <category/vm/evm/delegation.hpp>
 #include <category/vm/evm/explicit_traits.hpp>
@@ -83,6 +84,13 @@ bool ReserveBalance::failed_contains(Address const &address) const
 
 bool ReserveBalance::subject_account(Address const &address)
 {
+    // the balance of the staking contract address can decrease but that
+    // should not cause this tx to revert as that address cannot send
+    // transactions
+    if (address == staking::STAKING_CA) {
+        return false;
+    }
+
     OriginalAccountState &orig_state = state_->original_account_state(address);
     bytes32_t const effective_code_hash = use_recent_code_hash_
                                               ? state_->get_code_hash(address)
