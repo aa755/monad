@@ -33,6 +33,7 @@
 #include <category/execution/monad/chain/monad_testnet.hpp>
 #include <category/execution/monad/reserve_balance.h>
 #include <category/execution/monad/reserve_balance.hpp>
+#include <category/execution/monad/staking/util/constants.hpp>
 #include <category/execution/monad/system_sender.hpp>
 #include <category/execution/monad/validate_monad_transaction.hpp>
 #include <category/mpt/db.hpp>
@@ -334,6 +335,64 @@ TYPED_TEST(MonadTraitsTest, reserve_balance_checks_disabled_before_monad_four)
             false // expected should_revert
         );
     }
+}
+
+TYPED_TEST(MonadTraitsTest, staking_contract_balance_drop_does_not_revert)
+{
+    if constexpr (TestFixture::Trait::monad_rev() < MONAD_FOUR) {
+        GTEST_SKIP() << "reserve-balance checks are disabled before MONAD_FOUR";
+    }
+
+    using traits = typename TestFixture::Trait;
+    constexpr Address sender{1};
+    constexpr uint256_t base_fee_per_gas = 10;
+
+    auto const to_wei = [](uint64_t mon) {
+        return uint256_t{mon} * staking::MON;
+    };
+
+    InMemoryMachine machine;
+    mpt::Db db{machine};
+    TrieDb tdb{db};
+    vm::VM vm;
+    BlockState bs{tdb, vm};
+
+    {
+        State state{bs, Incarnation{0, 0}};
+        state.add_to_balance(sender, to_wei(20));
+        state.add_to_balance(staking::STAKING_CA, to_wei(10));
+        MONAD_ASSERT(bs.can_merge(state));
+        bs.merge(state);
+    }
+
+    uint256_t const sender_gas_fee = to_wei(1);
+    uint256_t const gas_limit_u256 = sender_gas_fee / base_fee_per_gas;
+    MONAD_ASSERT(
+        (sender_gas_fee % base_fee_per_gas) == 0 &&
+        gas_limit_u256 <= std::numeric_limits<uint64_t>::max());
+
+    Transaction const tx{
+        .max_fee_per_gas = base_fee_per_gas,
+        .gas_limit = static_cast<uint64_t>(gas_limit_u256),
+        .type = TransactionType::legacy,
+        .max_priority_fee_per_gas = 0,
+    };
+
+    ChainContext<traits> const chain_context{
+        .grandparent_senders_and_authorities = {},
+        .parent_senders_and_authorities = {},
+        .senders_and_authorities = {sender},
+        .senders = {sender},
+        .authorities = {{}},
+    };
+
+    State state{bs, Incarnation{1, 1}};
+    state.init_reserve_balance_context<traits>(
+        sender, tx, base_fee_per_gas, 0, chain_context);
+    state.subtract_from_balance(sender, sender_gas_fee);
+    state.subtract_from_balance(staking::STAKING_CA, to_wei(1));
+
+    EXPECT_FALSE(revert_transaction<traits>(state));
 }
 
 TYPED_TEST(MonadTraitsTest, revert_transaction_dip_false)
