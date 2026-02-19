@@ -51,11 +51,23 @@ unsigned monad_default_max_reserve_balance_mon(enum monad_revision)
 
 MONAD_ANONYMOUS_NAMESPACE_BEGIN
 
-template <Traits traits>
-bool dipped_into_reserve(State &state)
+bool is_delegated(State &state, bytes32_t const &code_hash)
 {
-    MONAD_ASSERT(state.reserve_balance_tracking_enabled());
-    return state.reserve_balance_has_violation();
+    if (MONAD_UNLIKELY(code_hash == NULL_HASH)) {
+        return false;
+    }
+
+    auto const vcode = state.read_code(code_hash);
+    MONAD_ASSERT(vcode);
+    auto const &icode = vcode->intercode();
+    return vm::evm::is_delegated({icode->code(), icode->size()});
+}
+
+template <Traits traits>
+bool dipped_into_reserve(ReserveBalance const &rb)
+{
+    MONAD_ASSERT(rb.tracking_enabled());
+    return rb.has_violation();
 }
 
 MONAD_ANONYMOUS_NAMESPACE_END
@@ -98,7 +110,7 @@ bool ReserveBalance::subject_account(Address const &address)
     if (effective_code_hash == NULL_HASH) {
         return true;
     }
-    return state_->is_delegated(effective_code_hash);
+    return is_delegated(*state_, effective_code_hash);
 }
 
 uint256_t ReserveBalance::pretx_reserve(Address const &address)
@@ -230,7 +242,7 @@ void ReserveBalance::init_from_tx(
             ? state_->get_code_hash(sender)
             : state_->original_account_state(sender).get_code_hash();
     bool const sender_can_dip = can_sender_dip_into_reserve<traits>(
-        sender, i, state_->is_delegated(sender_code_hash), ctx);
+        sender, i, is_delegated(*state_, sender_code_hash), ctx);
     tracking_enabled_ = true;
     sender_ = sender;
     sender_gas_fees_ = uint256_t{tx.gas_limit} *
@@ -246,10 +258,22 @@ void ReserveBalance::init_from_tx(
 EXPLICIT_MONAD_TRAITS_MEMBER(ReserveBalance::init_from_tx);
 
 template <Traits traits>
+    requires is_monad_trait_v<traits>
+void init_reserve_balance_context(
+    State &state, Address const &sender, Transaction const &tx,
+    std::optional<uint256_t> const &base_fee_per_gas, uint64_t i,
+    ChainContext<traits> const &ctx)
+{
+    state.rb_.init_from_tx<traits>(sender, tx, base_fee_per_gas, i, ctx);
+}
+
+EXPLICIT_MONAD_TRAITS(init_reserve_balance_context);
+
+template <Traits traits>
 bool revert_transaction(State &state)
 {
     if constexpr (traits::monad_rev() >= MONAD_FOUR) {
-        return dipped_into_reserve<traits>(state);
+        return dipped_into_reserve<traits>(state.rb_);
     }
     else if constexpr (traits::monad_rev() >= MONAD_ZERO) {
         return false;

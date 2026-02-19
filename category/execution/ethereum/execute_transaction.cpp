@@ -220,8 +220,13 @@ evmc::Result ExecuteTransactionNoValidation<traits>::operator()(
     State &state, EvmcHost<traits> &host)
 {
     if constexpr (::monad::is_monad_trait_v<traits>) {
-        state.init_reserve_balance_context<traits>(
-            sender_, tx_, header_.base_fee_per_gas, host.i_, host.chain_ctx_);
+        init_reserve_balance_context<traits>(
+            state,
+            sender_,
+            tx_,
+            header_.base_fee_per_gas,
+            host.i_,
+            host.chain_ctx_);
     }
 
     irrevocable_change<traits>(

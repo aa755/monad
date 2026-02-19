@@ -60,14 +60,13 @@ namespace
         State &state, EvmcHost<traits> &host, Address const &sender)
     {
         if constexpr (is_monad_trait_v<traits>) {
-            if (!state.reserve_balance_tracking_enabled()) {
-                state.init_reserve_balance_context<traits>(
-                    sender,
-                    host.tx_,
-                    host.base_fee_per_gas_,
-                    host.i_,
-                    host.chain_ctx_);
-            }
+            init_reserve_balance_context<traits>(
+                state,
+                sender,
+                host.tx_,
+                host.base_fee_per_gas_,
+                host.i_,
+                host.chain_ctx_);
         }
     }
 }

@@ -31,7 +31,6 @@
 #include <category/execution/ethereum/state3/version_stack.hpp>
 #include <category/execution/ethereum/types/incarnation.hpp>
 #include <category/vm/code.hpp>
-#include <category/vm/evm/delegation.hpp>
 #include <category/vm/evm/explicit_traits.hpp>
 #include <category/vm/evm/traits.hpp>
 #include <category/vm/vm.hpp>
@@ -103,27 +102,6 @@ State::State(
     , relaxed_validation_{relaxed_validation}
     , rb_{this}
 {
-}
-
-bool State::reserve_balance_tracking_enabled() const
-{
-    return rb_.tracking_enabled();
-}
-
-bool State::reserve_balance_has_violation() const
-{
-    return rb_.has_violation();
-}
-
-bool State::is_delegated(bytes32_t const &code_hash)
-{
-    if (MONAD_UNLIKELY(code_hash == NULL_HASH)) {
-        return false;
-    }
-    auto const vcode = read_code(code_hash);
-    MONAD_ASSERT(vcode);
-    auto const &icode = vcode->intercode();
-    return vm::evm::is_delegated({icode->code(), icode->size()});
 }
 
 State::Map<Address, OriginalAccountState> const &State::original() const
@@ -332,8 +310,6 @@ void State::set_nonce(Address const &address, uint64_t const nonce)
     account.value().nonce = nonce;
 }
 
-// except in try_fix_account_mismatch(),
-// only use add_to_balance() and subtract_from_balance() to modify balances
 void State::add_to_balance(Address const &address, uint256_t const &delta)
 {
     auto &account_state = current_account_state(address);

@@ -102,14 +102,13 @@ TEST_F(ReserveBalanceEvm, precompile_fallback)
         .code_address = RESERVE_BALANCE_CA,
     };
 
-    if (!state.reserve_balance_tracking_enabled()) {
-        state.init_reserve_balance_context<MonadTraits<MONAD_NEXT>>(
-            Address{m.sender},
-            empty_tx,
-            h.base_fee_per_gas_,
-            h.i_,
-            h.chain_ctx_);
-    }
+    init_reserve_balance_context<MonadTraits<MONAD_NEXT>>(
+        state,
+        Address{m.sender},
+        empty_tx,
+        h.base_fee_per_gas_,
+        h.i_,
+        h.chain_ctx_);
 
     auto const result = h.call(m);
     EXPECT_EQ(result.status_code, EVMC_REVERT);
