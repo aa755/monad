@@ -63,6 +63,11 @@ bool is_delegated(State &state, bytes32_t const &code_hash)
     return vm::evm::is_delegated({icode->code(), icode->size()});
 }
 
+bool is_smart_contract_code(byte_string_view const code)
+{
+    return !code.empty() && !vm::evm::is_delegated({code.data(), code.size()});
+}
+
 template <Traits traits>
 bool dipped_into_reserve(ReserveBalance const &rb)
 {
@@ -198,7 +203,7 @@ void ReserveBalance::on_set_code(
         return;
     }
     auto &violation_threshold = violation_thresholds_[address];
-    if (!vm::evm::is_delegated({code.data(), code.size()})) {
+    if (is_smart_contract_code(code)) {
         violation_threshold = uint256_t{0};
         failed_.erase(address);
         return;

@@ -539,6 +539,72 @@ TYPED_TEST(MonadTraitsTest, reserve_checks_code_hash)
     }
 }
 
+TYPED_TEST(MonadTraitsTest, reserve_checks_empty_code_hash)
+{
+    using traits = typename TestFixture::Trait;
+    constexpr Address SENDER{1};
+    constexpr Address NEW_CONTRACT{2};
+    constexpr uint64_t BASE_FEE_PER_GAS = 10;
+    auto const to_wei = [](uint64_t mon) {
+        return uint256_t{mon} * 1000000000000000000ULL;
+    };
+
+    InMemoryMachine machine;
+    mpt::Db db{machine};
+    TrieDb tdb{db};
+    vm::VM vm;
+    BlockState bs{tdb, vm};
+
+    {
+        State init_state{bs, Incarnation{0, 0}};
+        init_state.add_to_balance(SENDER, to_wei(20));
+        init_state.add_to_balance(NEW_CONTRACT, to_wei(3));
+        MONAD_ASSERT(bs.can_merge(init_state));
+        bs.merge(init_state);
+    }
+
+    Transaction const tx{
+        .max_fee_per_gas = BASE_FEE_PER_GAS,
+        .gas_limit = 1,
+        .type = TransactionType::legacy,
+        .max_priority_fee_per_gas = 0,
+    };
+    uint256_t const gas_cost =
+        uint256_t{BASE_FEE_PER_GAS} * uint256_t{tx.gas_limit};
+
+    ankerl::unordered_dense::segmented_set<Address> const
+        empty_grandparent_senders_and_authorities;
+    ankerl::unordered_dense::segmented_set<Address> const
+        empty_parent_senders_and_authorities;
+    std::vector<Address> const senders = {SENDER};
+    std::vector<std::vector<std::optional<Address>>> const authorities = {{}};
+    ankerl::unordered_dense::segmented_set<Address> senders_and_authorities;
+    senders_and_authorities.insert(SENDER);
+    ChainContext<traits> const context{
+        .grandparent_senders_and_authorities =
+            empty_grandparent_senders_and_authorities,
+        .parent_senders_and_authorities = empty_parent_senders_and_authorities,
+        .senders_and_authorities = senders_and_authorities,
+        .senders = senders,
+        .authorities = authorities};
+
+    State state{bs, Incarnation{1, 1}};
+    init_reserve_balance_context<traits>(
+        state, SENDER, tx, BASE_FEE_PER_GAS, 0, context);
+    state.subtract_from_balance(SENDER, gas_cost);
+    state.subtract_from_balance(NEW_CONTRACT, to_wei(3));
+    state.set_code(NEW_CONTRACT, {});
+
+    bool const should_revert = revert_transaction<traits>(state);
+
+    if constexpr (traits::monad_rev() < MONAD_FOUR) {
+        EXPECT_FALSE(should_revert);
+    }
+    else {
+        EXPECT_TRUE(should_revert);
+    }
+}
+
 TYPED_TEST(MonadTraitsTest, system_transaction_sender_is_authority)
 {
     InMemoryMachine machine;
