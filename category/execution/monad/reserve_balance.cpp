@@ -68,7 +68,6 @@ bool is_smart_contract_code(byte_string_view const code)
     return !code.empty() && !vm::evm::is_delegated({code.data(), code.size()});
 }
 
-template <Traits traits>
 bool dipped_into_reserve(ReserveBalance const &rb)
 {
     MONAD_ASSERT(rb.tracking_enabled());
@@ -278,7 +277,7 @@ template <Traits traits>
 bool revert_transaction(State &state)
 {
     if constexpr (traits::monad_rev() >= MONAD_FOUR) {
-        return dipped_into_reserve<traits>(state.rb_);
+        return dipped_into_reserve(state.rb_);
     }
     else if constexpr (traits::monad_rev() >= MONAD_ZERO) {
         return false;

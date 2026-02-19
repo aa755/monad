@@ -344,6 +344,27 @@ void State::subtract_from_balance(
     rb_.on_debit(address);
 }
 
+void State::set_balance(Address const &address, uint256_t const &balance)
+{
+    auto &account_state = current_account_state(address);
+    auto &account = account_state.account_;
+    if (MONAD_UNLIKELY(!account.has_value())) {
+        account = Account{.incarnation = incarnation_};
+    }
+
+    uint256_t const previous_balance = account->balance;
+    account->balance = balance;
+    account_state.touch();
+    original_account_state(address).set_validate_exact_balance();
+
+    if (balance > previous_balance) {
+        rb_.on_credit(address);
+    }
+    else {
+        rb_.on_debit(address);
+    }
+}
+
 evmc_storage_status State::set_storage(
     Address const &address, bytes32_t const &key, bytes32_t const &value)
 {
@@ -409,14 +430,12 @@ State::selfdestruct(Address const &address, Address const &beneficiary)
 
     if constexpr (traits::evm_rev() < EVMC_CANCUN) {
         add_to_balance(beneficiary, account.value().balance);
-        subtract_from_balance(address, account.value().balance);
-        original_account_state(address).set_validate_exact_balance();
+        set_balance(address, 0);
     }
     else {
         if (address != beneficiary || account->incarnation == incarnation_) {
             add_to_balance(beneficiary, account.value().balance);
-            subtract_from_balance(address, account.value().balance);
-            original_account_state(address).set_validate_exact_balance();
+            set_balance(address, 0);
         }
     }
 
