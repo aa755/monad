@@ -61,9 +61,6 @@ bool dipped_into_reserve(
     MONAD_ASSERT(i < ctx.authorities.size());
     MONAD_ASSERT(ctx.senders.size() == ctx.authorities.size());
 
-    static constexpr bool allow_initcode_exemption =
-        traits::monad_rev() >= MONAD_NINE;
-
     uint256_t const gas_fees =
         uint256_t{tx.gas_limit} * gas_price<traits>(tx, base_fee_per_gas);
     auto const &orig = state.original();
@@ -93,8 +90,9 @@ bool dipped_into_reserve(
                 continue;
             }
         }
-        else if (
-            allow_initcode_exemption && state.has_executed_initcode(addr)) {
+        if ((addr == sender || traits::monad_rev() >= MONAD_NINE) &&
+            can_account_empty_reserve<traits>(
+                addr, i, effective_is_delegated, ctx)) {
             continue;
         }
 
@@ -115,27 +113,12 @@ bool dipped_into_reserve(
         uint256_t const curr_balance = state.get_balance(addr);
         if (!violation_threshold.has_value() ||
             curr_balance < violation_threshold.value()) {
-            if (addr == sender) {
-                if (!can_sender_dip_into_reserve(
-                        sender, i, effective_is_delegated, ctx)) {
-                    // Safety: this assertion is recoverable because it can be
-                    // triggered via RPC parameter setting.
-                    MONAD_ASSERT_THROW(
-                        violation_threshold.has_value(),
-                        "gas fee greater than reserve for non-dipping "
-                        "transaction");
-                    return true;
-                }
-                // Skip if allowed to dip into reserve
-            }
-            else {
-                // Safety: this assertion should not be a recoverable one, as it
-                // indicates a logic error in the surrounding code: the
-                // violation threshold can only be nullopt when addr == sender,
-                // which is not the case in this branch.
-                MONAD_ASSERT(violation_threshold.has_value());
-                return true;
-            }
+            // Safety: this assertion is recoverable because it can be
+            // triggered via RPC parameter setting.
+            MONAD_ASSERT_THROW(
+                violation_threshold.has_value(),
+                "gas fee greater than reserve for non-dipping transaction");
+            return true;
         }
     }
     return false;
@@ -201,10 +184,46 @@ bool ReserveBalance::subject_account(Address const &address)
     bytes32_t const effective_code_hash = use_recent_code_hash_
                                               ? state_->get_code_hash(address)
                                               : orig_state.get_code_hash();
-    if (effective_code_hash == NULL_HASH) {
-        return true;
+    bool const effective_is_delegated =
+        is_delegated(*state_, effective_code_hash);
+    if (effective_code_hash != NULL_HASH && !effective_is_delegated) {
+        return false;
     }
-    return is_delegated(*state_, effective_code_hash);
+    return !can_account_empty_reserve(address, effective_is_delegated);
+}
+
+bool ReserveBalance::can_account_empty_reserve(
+    Address const &address, bool const address_is_delegated) const
+{
+    if (address_is_delegated) {
+        return false;
+    }
+    if (address != sender_ && !allow_nonsender_empty_) {
+        return false;
+    }
+    MONAD_ASSERT(grandparent_senders_and_authorities_);
+    MONAD_ASSERT(parent_senders_and_authorities_);
+    MONAD_ASSERT(senders_and_authorities_);
+    MONAD_ASSERT(senders_);
+    MONAD_ASSERT(authorities_);
+
+    if (grandparent_senders_and_authorities_->contains(address) ||
+        parent_senders_and_authorities_->contains(address)) {
+        return false;
+    }
+
+    if (senders_and_authorities_->contains(address)) {
+        for (size_t j = 0; j <= tx_index_; ++j) {
+            if (j < tx_index_ && address == senders_->at(j)) {
+                return false;
+            }
+            if (std::ranges::contains(authorities_->at(j), address)) {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 uint256_t ReserveBalance::pretx_reserve(Address const &address)
@@ -221,11 +240,6 @@ void ReserveBalance::update_violation_status(Address const &address)
     }
 
     auto &violation_threshold = violation_thresholds_[address];
-    if (has_executed_initcode(address)) {
-        violation_threshold = uint256_t{0};
-        failed_.erase(address);
-        return;
-    }
     if (!violation_threshold.has_value()) {
         if (!subject_account(address)) {
             violation_threshold = uint256_t{0};
@@ -235,11 +249,6 @@ void ReserveBalance::update_violation_status(Address const &address)
 
         uint256_t reserve = pretx_reserve(address);
         if (address == sender_) {
-            if (sender_can_dip_) {
-                violation_threshold = uint256_t{0};
-                failed_.erase(address);
-                return;
-            }
             MONAD_ASSERT_THROW(
                 sender_gas_fees_ <= reserve,
                 "gas fee greater than reserve for non-dipping transaction");
@@ -306,21 +315,6 @@ void ReserveBalance::on_set_code(
     update_violation_status(address);
 }
 
-void ReserveBalance::on_initcode_execution(Address const &address)
-{
-    if (!allow_initcode_exemption_) {
-        return;
-    }
-    initcode_exec_accounts_.insert(address);
-    update_violation_status(address);
-}
-
-bool ReserveBalance::has_executed_initcode(Address const &address) const
-{
-    return allow_initcode_exemption_ &&
-           initcode_exec_accounts_.contains(address);
-}
-
 template <Traits traits>
 void ReserveBalance::init_from_tx(
     Address const &sender, Transaction const &tx,
@@ -339,13 +333,17 @@ void ReserveBalance::init_from_tx(
     if constexpr (tracking_disabled) {
         tracking_enabled_ = false;
         use_recent_code_hash_ = false;
-        allow_initcode_exemption_ = false;
+        allow_nonsender_empty_ = false;
+        grandparent_senders_and_authorities_ = nullptr;
+        parent_senders_and_authorities_ = nullptr;
+        senders_and_authorities_ = nullptr;
+        senders_ = nullptr;
+        authorities_ = nullptr;
+        tx_index_ = 0;
         sender_ = {};
         sender_gas_fees_ = 0;
-        sender_can_dip_ = false;
         get_max_reserve_ = {};
         failed_.clear();
-        initcode_exec_accounts_.clear();
         violation_thresholds_.clear();
         return;
     }
@@ -354,23 +352,22 @@ void ReserveBalance::init_from_tx(
     MONAD_ASSERT(i < ctx.authorities.size());
     MONAD_ASSERT(ctx.senders.size() == ctx.authorities.size());
     use_recent_code_hash_ = traits::monad_rev() >= MONAD_EIGHT;
-    allow_initcode_exemption_ = traits::monad_rev() >= MONAD_NINE;
-    bytes32_t const sender_code_hash =
-        use_recent_code_hash_
-            ? state_->get_code_hash(sender)
-            : state_->original_account_state(sender).get_code_hash();
-    bool const sender_can_dip = can_sender_dip_into_reserve<traits>(
-        sender, i, is_delegated(*state_, sender_code_hash), ctx);
+    allow_nonsender_empty_ = traits::monad_rev() >= MONAD_NINE;
+    grandparent_senders_and_authorities_ =
+        &ctx.grandparent_senders_and_authorities;
+    parent_senders_and_authorities_ = &ctx.parent_senders_and_authorities;
+    senders_and_authorities_ = &ctx.senders_and_authorities;
+    senders_ = &ctx.senders;
+    authorities_ = &ctx.authorities;
+    tx_index_ = i;
     tracking_enabled_ = true;
     sender_ = sender;
     sender_gas_fees_ = uint256_t{tx.gas_limit} *
                        gas_price<traits>(tx, base_fee_per_gas.value_or(0));
-    sender_can_dip_ = sender_can_dip;
     get_max_reserve_ = [](Address const &addr) {
         return get_max_reserve<traits>(addr);
     };
     failed_.clear();
-    initcode_exec_accounts_.clear();
     violation_thresholds_.clear();
 }
 
@@ -420,33 +417,45 @@ EXPLICIT_MONAD_TRAITS(revert_transaction_cached);
 
 template <Traits traits>
     requires is_monad_trait_v<traits>
-bool can_sender_dip_into_reserve(
-    Address const &sender, uint64_t const i, bool const sender_is_delegated,
+bool can_account_empty_reserve(
+    Address const &address, uint64_t const i, bool const address_is_delegated,
     ChainContext<traits> const &ctx)
 {
-    if (sender_is_delegated) { // delegated accounts cannot dip
+    if (address_is_delegated) { // delegated accounts cannot dip
         return false;
     }
 
     // check pending blocks
-    if (ctx.grandparent_senders_and_authorities.contains(sender) ||
-        ctx.parent_senders_and_authorities.contains(sender)) {
+    if (ctx.grandparent_senders_and_authorities.contains(address) ||
+        ctx.parent_senders_and_authorities.contains(address)) {
         return false;
     }
 
     // check current block
-    if (ctx.senders_and_authorities.contains(sender)) {
+    if (ctx.senders_and_authorities.contains(address)) {
         for (size_t j = 0; j <= i; ++j) {
-            if (j < i && sender == ctx.senders.at(j)) {
+            if (j < i && address == ctx.senders.at(j)) {
                 return false;
             }
-            if (std::ranges::contains(ctx.authorities.at(j), sender)) {
+            if (std::ranges::contains(ctx.authorities.at(j), address)) {
                 return false;
             }
         }
     }
 
-    return true; // Allow dipping into reserve if no restrictions found
+    return true;
+}
+
+EXPLICIT_MONAD_TRAITS(can_account_empty_reserve);
+
+template <Traits traits>
+    requires is_monad_trait_v<traits>
+bool can_sender_dip_into_reserve(
+    Address const &sender, uint64_t const i, bool const sender_is_delegated,
+    ChainContext<traits> const &ctx)
+{
+    return can_account_empty_reserve<traits>(
+        sender, i, sender_is_delegated, ctx);
 }
 
 EXPLICIT_MONAD_TRAITS(can_sender_dip_into_reserve);

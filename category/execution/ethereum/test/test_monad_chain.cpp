@@ -620,6 +620,10 @@ TYPED_TEST(MonadTraitsTest, reserve_checks_empty_code_hash)
         EXPECT_FALSE(should_revert);
         EXPECT_FALSE(should_revert_cached);
     }
+    else if constexpr (traits::monad_rev() >= MONAD_NINE) {
+        EXPECT_FALSE(should_revert);
+        EXPECT_FALSE(should_revert_cached);
+    }
     else {
         EXPECT_TRUE(should_revert);
         EXPECT_TRUE(should_revert_cached);
@@ -685,7 +689,6 @@ TYPED_TEST(MonadTraitsTest, reserve_checks_prefunded_init_selfdestruct)
     // create the account in current incarnation, then selfdestruct it before
     // any runtime code is set.
     state.create_contract(NEW_CONTRACT);
-    state.note_initcode_execution(NEW_CONTRACT);
     auto const [inserted, initial_balance] =
         state.selfdestruct<traits>(NEW_CONTRACT, BENEFICIARY);
     EXPECT_TRUE(inserted);
@@ -767,7 +770,6 @@ TYPED_TEST(MonadTraitsTest, reserve_checks_executed_initcode)
 
     state.create_contract(NEW_CONTRACT);
     state.set_nonce(NEW_CONTRACT, 1);
-    state.note_initcode_execution(NEW_CONTRACT);
     state.subtract_from_balance(NEW_CONTRACT, to_wei(11));
 
     bool const should_revert = revert_transaction<traits>(
