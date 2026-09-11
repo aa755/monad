@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "context": "rocq/proofs",
+  "branches": ["main", "ci/rocq-proofs"],
+  "pull_request_bases": ["main"],
+  "trusted_pr_authors": ["aa755"]
+}
