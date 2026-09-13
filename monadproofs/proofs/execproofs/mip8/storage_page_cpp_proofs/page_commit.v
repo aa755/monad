@@ -100,6 +100,7 @@ Section with_Sigma.
     verify[source] page_commit_spec.
   Proof using MODd.
     verify_spec.
+    idtac.
     (* The spec uses [commitment.v] through the centralized BLAKE3 boundary in
        [blake3model.v].  [StoragePageR] has a fractional instance, so the
        initial const method call can borrow the page without exposing the field
