@@ -9,18 +9,12 @@ C++ with unmodified public main. This is not authorization to add assumptions,
 weaken other proofs, or keep their old specs as trusted substitutes for the
 suspended bodies.
 
-- Passing pre-update Monad baseline: `83749b825`.
-- Borg repository: `/home/abhishek/borg-archive-repo`.
-- Verified reference archive: `backup-2026-09-07T21:35:41`.
-  Fingerprint: `819c8fed70604acd35a579fc61bebf94d8c74c27279ef8bb00920658ea80204d`.
 - Main fetched and pinned for the update:
   [`1d22498c5f6af83d375b504aa12bd5c815cf3545`](https://github.com/category-labs/monad/commit/1d22498c5f6af83d375b504aa12bd5c815cf3545).
 
-The archive includes both workspaces, generated ASTs, build artifacts, and
-`.opam`. Both Dune's `all.vo` build and interactive checking of `all.v` passed
-before this archive was created, with only the separately authorized
-Incarnation caller theorem/spec suspended. Use this snapshot for live
-old/new proof-state comparisons; do not rediscover the existing proofs.
+The pre-update proof environment was retained privately for live old/new
+proof-state comparisons. Its `all.vo` build and interactive checking passed,
+with the separately authorized Incarnation caller theorem/spec suspended.
 
 ## Authorized Scope
 
