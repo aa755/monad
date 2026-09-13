@@ -1,0 +1,60 @@
+(include_subdirs qualified)
+(rocq.theory
+ (name monad)                           ; logical path of this library
+ (package monad)
+ (theories
+  Corelib Stdlib Lens Lens.Elpi Equations Equations.Prop Equations.Type
+  EVMOpSem automisc
+  skylabs iris stdpp elpi elpi_elpi ExtLib Ltac2
+  AAC_tactics
+  skylabs.brick.libstdcpp)
+ (flags :standard)
+ (rocqdoc_flags (--utf8))
+)
+
+(subdir proofs/libspecs/const_tu
+ (rule
+  (targets inc_bytes_cpp.v.stderr inc_bytes_cpp.v)
+  (deps
+   (:input inc_bytes.cpp)
+   (universe)
+   (source_tree ../../../../category/core)
+   (source_tree ../../../../category/crypto)
+   (source_tree ../../../../third_party/ankerl)
+   (source_tree ../../../../third_party/cthash/include)
+   (source_tree ../../../../third_party/ethash/include)
+   (source_tree ../../../../third_party/evmc/include)
+   (source_tree ../../../../third_party/intx/include)
+   (source_tree ../../../../third_party/unordered_dense/include))
+  (action
+   (with-stderr-to
+    inc_bytes_cpp.v.stderr
+    (run cpp2v -v %{input} -o inc_bytes_cpp.v --no-elaborate
+     --no-templates --
+     -std=gnu++23 -stdlib=libstdc++ -march=haswell
+     -DMONAD_CXX_CTYPES_USE_EVMC_HPP
+     -DMONAD_CXX_CTYPES_USE_MONAD_INTS
+     -I %{workspace_root}/monad
+     -I %{workspace_root}/monad/third_party/cthash/include
+     -I %{workspace_root}/monad/third_party/evmc/include
+     -I %{workspace_root}/monad/third_party/intx/include
+     -I %{workspace_root}/monad/third_party/ankerl
+     -I %{workspace_root}/monad/third_party/ethash/include
+     -I %{workspace_root}/monad/third_party/unordered_dense/include))))
+ (rule
+  (targets inc_uint256_cpp.v.stderr inc_uint256_cpp.v)
+  (deps
+   (:input inc_uint256.cpp)
+   (universe)
+   (source_tree ../../../../category/core)
+   (source_tree ../../../../third_party/intx/include))
+  (action
+   (with-stderr-to
+    inc_uint256_cpp.v.stderr
+    (run cpp2v -v %{input} -o inc_uint256_cpp.v --no-elaborate
+     --no-templates --
+     -std=gnu++23 -stdlib=libstdc++ -march=haswell
+     -DMONAD_CXX_CTYPES_USE_EVMC_HPP
+     -DMONAD_CXX_CTYPES_USE_MONAD_INTS
+     -I %{workspace_root}/monad
+     -I %{workspace_root}/monad/third_party/intx/include)))))
