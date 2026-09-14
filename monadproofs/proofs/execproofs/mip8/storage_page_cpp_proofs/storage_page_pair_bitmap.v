@@ -705,7 +705,9 @@ Section with_Sigma.
     repeat match goal with
     | H : context[pext64 _ _] |- _ => clear H
     end.
-    do 8 run1.
+    do 10 run1.
+    change 4294967296%Z with (2 ^ 32)%Z.
+    rewrite <- Z.shiftl_mul_pow2 by lia.
     rewrite
       (pair_bitmap_return_cpp_Z_coe
          (pext_even64
@@ -717,5 +719,23 @@ Section with_Sigma.
          (pext_even64_bound32 _)).
     rewrite Hpext.
     go.
+    rewrite <- Hpext, <- N2Z_lor.
+    unfold trim.
+    rewrite Z.mod_small.
+    { go. }
+    apply builtins.ZlorRange.
+    {
+      match goal with
+      | |- (0 <= Z.of_N (pext_even64 ?word) < _)%Z =>
+          pose proof (pext_even64_bound32 word); lia
+      end.
+    }
+    {
+      rewrite N.shiftl_mul_pow2 N2Z.inj_mul.
+      match goal with
+      | |- (0 <= Z.of_N (pext_even64 ?word) * _ < _)%Z =>
+          pose proof (pext_even64_bound32 word); lia
+      end.
+    }
   Qed.
 End with_Sigma.

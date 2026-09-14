@@ -51,7 +51,7 @@ uint64_t storage_page_t::pair_bitmap() const
     auto const hi = static_cast<uint64_t>(bitmap_ >> 64);
     uint64_t const lo_pairs = _pext_u64(lo | (lo >> 1), even_bits);
     uint64_t const hi_pairs = _pext_u64(hi | (hi >> 1), even_bits);
-    return lo_pairs | (hi_pairs << 32);
+    return lo_pairs | (hi_pairs * 0x100000000ULL);
 }
 
 // MIP-8 Induced-Subtree Merkle Commitment (ISMC) over a 4096-byte storage
