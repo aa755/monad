@@ -1,7 +1,7 @@
 {
   "version": 1,
   "context": "rocq/proofs",
-  "branches": ["ci/colocated-proofs"],
+  "branches": ["main"],
   "pull_request_bases": ["main"],
   "trusted_pr_authors": ["aa755"]
 }
