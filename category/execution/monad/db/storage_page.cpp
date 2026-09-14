@@ -131,8 +131,8 @@ namespace
         size_t n = 0;
         for (uint64_t bits = pair_bitmap; bits != 0; bits &= bits - 1, ++n) {
             auto const i = static_cast<uint8_t>(std::countr_zero(bits));
-            auto const left_idx = static_cast<uint8_t>(2 * i);
-            auto const right_idx = static_cast<uint8_t>(left_idx + 1);
+            auto const left_idx = static_cast<uint8_t>(i + i);
+            auto const right_idx = static_cast<uint8_t>(2 * i + 1);
             std::memcpy(valid_pairs[n], page[left_idx].bytes, BLAKE3_OUT_LEN);
             std::memcpy(
                 valid_pairs[n] + BLAKE3_OUT_LEN,
