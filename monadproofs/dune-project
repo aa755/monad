@@ -1,0 +1,16 @@
+(lang dune 3.21)
+(using rocq 0.11)
+(name monad)
+(generate_opam_files)
+
+(package
+ (name monad)
+ (depends
+  rocq-core
+  rocq-stdlib
+  rocq-evm-op-sem
+  rocq-automisc))
+
+(maintainers
+ "Abhishek Anand <abhishek@category.xyz>")
+(source (github category-labs/monad))
