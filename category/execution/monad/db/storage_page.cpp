@@ -258,8 +258,8 @@ bytes32_t page_commit(storage_page_t const &page)
     if (page.is_empty()) {
         return blake3_seal(0, nullptr);
     }
-    auto const slot_bitmap = page.bitmap();
     uint64_t const pair_bitmap = page.pair_bitmap();
+    auto const slot_bitmap = page.bitmap();
     bytes32_t const root = compute_nonempty_subtree_root(page, pair_bitmap);
     return blake3_seal(slot_bitmap, root.bytes);
 }
