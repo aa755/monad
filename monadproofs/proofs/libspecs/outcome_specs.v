@@ -352,25 +352,6 @@ Section with_Sigma.
       \post
         [Vref (resp ,, outcome_result_value_offset result_name)] emp.
 
-  Definition outcome_try_extract_void_spec
-      (error_ty policy_ty : type)
-      {E : Type}
-      `{!concepts.BundledRep error_ty E} : mpred :=
-    let result_name :=
-      outcome_result_name Tvoid error_ty policy_ty in
-    let result_ty := Tnamed result_name in
-    specify.template.func
-      "boost::outcome_v2::try_operation_extract_value"%cpp_name
-      [Atype result_ty; Atype Tvoid]
-      Tvoid
-      [Trv_ref result_ty; outcome_assume_value_overload_ty] $
-      \arg{resp : ptr} "v" (Vref resp)
-      \arg{tagp : ptr} "" (Vptr tagp)
-      \prepost{q}
-        resp |-> OutcomeResultR result_name Tvoid error_ty q
-          (OutcomeValue tt)
-      \post [Vvoid] emp.
-
   Definition outcome_failure_dtor_spec
       (error_ty : type)
       {E : Type} `{!OutcomeFailureModel error_ty E} : mpred :=
@@ -616,8 +597,6 @@ Section with_Sigma.
     RegisterSpec (@outcome_try_return_as_spec).
   Definition SpecFor_outcome_try_extract_value :=
     RegisterSpec (@outcome_try_extract_value_spec).
-  Definition SpecFor_outcome_try_extract_void :=
-    RegisterSpec (@outcome_try_extract_void_spec).
   Definition SpecFor_outcome_failure_dtor :=
     RegisterSpec (@outcome_failure_dtor_spec).
   Definition SpecFor_outcome_value_tag_ctor :=
@@ -650,7 +629,6 @@ End with_Sigma.
 #[global] Existing Instance SpecFor_outcome_try_has_value.
 #[global] Existing Instance SpecFor_outcome_try_return_as.
 #[global] Existing Instance SpecFor_outcome_try_extract_value.
-#[global] Existing Instance SpecFor_outcome_try_extract_void.
 #[global] Existing Instance SpecFor_outcome_failure_dtor.
 #[global] Existing Instance SpecFor_outcome_value_tag_ctor.
 #[global] Existing Instance SpecFor_outcome_value_tag_dtor.
@@ -669,7 +647,6 @@ End with_Sigma.
 #[global] Arguments outcome_try_has_value_spec : simpl never.
 #[global] Arguments outcome_try_return_as_spec : simpl never.
 #[global] Arguments outcome_try_extract_value_spec : simpl never.
-#[global] Arguments outcome_try_extract_void_spec : simpl never.
 #[global] Arguments outcome_failure_dtor_spec : simpl never.
 #[global] Arguments outcome_value_tag_ctor_spec : simpl never.
 #[global] Arguments outcome_value_tag_dtor_spec : simpl never.
@@ -689,7 +666,6 @@ End with_Sigma.
   outcome_try_has_value_spec
   outcome_try_return_as_spec
   outcome_try_extract_value_spec
-  outcome_try_extract_void_spec
   outcome_failure_dtor_spec
   outcome_value_tag_ctor_spec
   outcome_value_tag_dtor_spec

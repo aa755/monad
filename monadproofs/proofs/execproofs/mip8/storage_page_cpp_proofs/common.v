@@ -12,6 +12,7 @@ Set Default Goal Selector "!".
 
 Require Export skylabs.auto.cpp.tactics4.
 Require Export skylabs.auto.cpp.prelude.proof.
+Require Import skylabs.auto.cpp.hints.array.
 Require Export monad.asts.storage_page_cpp.
 Require Export monad.proofs.misc.
 Require Export monad.proofs.execproofs.mip8.commitment.

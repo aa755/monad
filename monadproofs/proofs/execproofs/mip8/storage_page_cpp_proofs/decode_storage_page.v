@@ -13,6 +13,7 @@ Require Import monad.proofs.libspecs.result_model.
 Require Import monad.proofs.libspecs.rlp_decode_error_model.
 Require Import monad.proofs.libspecs.rlp_decode_error_specs.
 Require Import monad.proofs.libspecs.rlp_specs.
+Require Import monad.proofs.libspecs.system_error2.all.
 Require Import monad.proofs.execproofs.mip8.storage_page_specs.
 Require Import monad.proofs.execproofs.mip8.storage_page_encoding.
 Require Import monad.proofs.execproofs.mip8.storage_page_cpp_proofs.common.

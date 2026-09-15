@@ -7,9 +7,7 @@
  (name monad)
  (depends
   rocq-core
-  rocq-stdlib
-  rocq-evm-op-sem
-  rocq-automisc))
+  rocq-stdlib))
 
 (maintainers
  "Abhishek Anand <abhishek@category.xyz>")

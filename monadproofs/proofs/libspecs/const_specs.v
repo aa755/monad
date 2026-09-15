@@ -58,19 +58,6 @@ Definition bytes32_const_tu : translation_unit :=
     ["evmc_bytes32"%cpp_name;
      "monad::bytes32_t"%cpp_name].
 
-Definition account_const_tu : translation_unit :=
-  with_selected_types state_cpp.source
-    [exec_specs.u256_words_array_name; "monad::uint256_t"%cpp_name;
-     "evmc_bytes32"%cpp_name; "monad::bytes32_t"%cpp_name;
-     "monad::Account"%cpp_name;
-     optional_specs.trivial_optional_name "monad::Account";
-     optional_specs.trivial_optional_base_name "monad::Account";
-     optional_specs.trivial_optional_enable_name "monad::Account";
-     optional_specs.trivial_optional_payload_name "monad::Account";
-     optional_specs.trivial_optional_payload_base_name "monad::Account";
-     optional_specs.trivial_optional_storage_name "monad::Account";
-     optional_specs.trivial_optional_empty_name "monad::Account"].
-
 Section with_Sigma.
   Context `{Sigma : cpp_logic} {CU : genv} {hh : HasOwn mpredI fracR}.
 
@@ -272,63 +259,6 @@ Section with_Sigma.
 
   Definition bytes32R_const_C := [CANCEL] bytes32R_const.
 
-  (* IncarnationR is an existing abstract boundary. Its const law preserves
-     the logical indices and changes only the permission on the owned object. *)
-  Axiom IncarnationR_const : forall tu,
-    const.CONST1 tu "monad::Incarnation" IncarnationR.
-
-  Lemma IncarnationR_wp_const tu idx (p : ptr) (from to : bool) Q :
-    p |-> IncarnationR (cQp.mk from 1) idx |--
-    (p |-> IncarnationR (cQp.mk to 1) idx -* Q) -*
-    wp_const tu (cQp.mk from 1) (cQp.mk to 1)
-      p "monad::Incarnation" Q.
-  Proof.
-    apply (IncarnationR_const tu idx p from to tu Q).
-    reflexivity.
-  Qed.
-
-  Definition IncarnationR_const_C := [CANCEL] IncarnationR_wp_const.
-
-  Lemma AccountR_const :
-    const.CONST1 account_const_tu "monad::Account" AccountR.
-  Proof.
-    const.prove.
-    unfold AccountR.
-    go using u256R_const_C, bytes32R_const_C, IncarnationR_const_C.
-  Qed.
-
-  Definition AccountR_const_C := [CANCEL] AccountR_const.
-
-  Lemma optional_AccountR_const :
-    const.CONST1 account_const_tu
-      (optional_specs.trivial_optional_name "monad::Account")
-      (optional_specs.optionR "monad::Account" AccountR).
-  Proof.
-    intros a p from to.
-    eapply const.transport'.
-    { intros q. apply optional_specs.optionR_layout. }
-    Transparent optional_specs.trivial_optional_baseR
-      optional_specs.trivial_optional_payloadR
-      optional_specs.trivial_optional_payload_baseR
-      optional_specs.trivial_optional_storageR.
-    unfold optional_specs.trivial_optional_baseR,
-      optional_specs.trivial_optional_payloadR,
-      optional_specs.trivial_optional_payload_baseR,
-      optional_specs.trivial_optional_storageR.
-    destruct a.
-    { go using AccountR_const_C. }
-    { go. }
-  Qed.
-
-  Definition optional_AccountR_const_C := [CANCEL] optional_AccountR_const.
-
-  Opaque optional_specs.trivial_optional_baseR
-    optional_specs.trivial_optional_payloadR
-    optional_specs.trivial_optional_payload_baseR
-    optional_specs.trivial_optional_storageR.
-
 End with_Sigma.
 
 #[global] Hint Resolve u256R_const_C bytes32R_const_C : sl_opacity.
-#[global] Hint Resolve IncarnationR_const_C AccountR_const_C
-  optional_AccountR_const_C : sl_opacity.

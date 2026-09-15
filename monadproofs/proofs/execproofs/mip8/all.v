@@ -13,8 +13,7 @@ Set Default Goal Selector "!".
   Read the files in this order if you want the conceptual stack:
   induced_subtree -> blake3model -> commitment ->
   induced_subtree_bridge -> membership_proofs -> storage_page_indexed_encoding ->
-  blake3specs -> storage_page_specs -> storage_page_cpp_proofs/all ->
-  storage_page_proofs.
+  blake3specs -> storage_page_specs -> storage_page_cpp_proofs/all.
 *)
 
 Require Import monad.proofs.execproofs.mip8.induced_subtree.
@@ -27,4 +26,3 @@ Require Import monad.proofs.execproofs.mip8.storage_page_indexed_encoding.
 Require Import monad.proofs.execproofs.mip8.blake3specs.
 Require Import monad.proofs.execproofs.mip8.storage_page_specs.
 Require Import monad.proofs.execproofs.mip8.storage_page_cpp_proofs.all.
-Require Import monad.proofs.execproofs.mip8.storage_page_proofs.
