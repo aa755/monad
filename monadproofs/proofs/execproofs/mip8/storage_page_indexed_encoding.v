@@ -8,8 +8,7 @@ Set Default Goal Selector "!".
     page therefore encodes as the empty byte string. The commitment algorithm
     is unaffected by this serialization change.
 
-    The previous file supplies the already-proved compact-RLP machinery. Its
-    RLE theorems remain checked, but do not describe this production format. *)
+    [storage_page_encoding] supplies the compact-RLP machinery used here. *)
 
 From Stdlib Require Import Bool List NArith ZArith Lia.
 Require Import monad.proofs.execproofs.mip8.commitment.

@@ -4,7 +4,6 @@
  (package monad)
  (theories
   Corelib Stdlib Lens Lens.Elpi Equations Equations.Prop Equations.Type
-  EVMOpSem automisc
   skylabs iris stdpp elpi elpi_elpi ExtLib Ltac2
   AAC_tactics
   skylabs.brick.libstdcpp)

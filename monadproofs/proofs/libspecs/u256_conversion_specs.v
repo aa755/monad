@@ -11,7 +11,7 @@ Set Default Goal Selector "!".
 
 Require Import skylabs.auto.cpp.proof.
 Require Import skylabs.lang.cpp.cpp.
-Require Import monad.asts.state_cpp.
+Require Import monad.asts.storage_page_cpp.
 Require Import monad.proofs.exec_specs.
 Require Import monad.proofs.libspecs.u256_specs.
 
@@ -57,7 +57,7 @@ Section with_Sigma.
   (** Load one 256-bit word from its 32-byte big-endian representation. *)
   cpp.spec
     "monad::load_be<monad::uint256_t, 32ul>(const unsigned char[32]&)"
-    from state_cpp.source as load_be_uint256_bytes32_spec with (
+    from storage_page_cpp.source as load_be_uint256_bytes32_spec with (
       \arg{srcp : ptr} "src" (Vref srcp)
       \pre srcp |-> type_ptrR (Tarray Tuchar 32)
       \prepost{q word}
@@ -70,7 +70,7 @@ Section with_Sigma.
   (** Store one uint256 value as a [monad::bytes32_t] in big-endian order. *)
   cpp.spec
     "monad::store_be_as<monad::bytes32_t, monad::uint256_t>(monad::uint256_t)"
-    from state_cpp.source as store_be_as_bytes32_uint256_spec with (
+    from storage_page_cpp.source as store_be_as_bytes32_uint256_spec with (
       \arg{xp : ptr} "x" (Vptr xp)
       \prepost{word} xp |-> u256R 1 word
       \post{retp : ptr} [Vptr retp]

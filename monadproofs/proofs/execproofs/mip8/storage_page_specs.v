@@ -17,7 +17,7 @@ Set Default Goal Selector "!".
 
   The file has three layers.  First it defines pure Coq models for the storage
   page operations.  Then it states specs for library calls used by the generated
-  C++ AST.  Finally it states the top-level specs that [storage_page_proofs.v]
+  C++ AST.  Finally it states the top-level specs that [storage_page_cpp_proofs/all.v]
   checks where the current dependency specs are strong enough.
 *)
 
@@ -2067,7 +2067,7 @@ Section with_Sigma.
     Top-level storage_page.cpp specs
     --------------------------------
 
-    These are the obligations that [storage_page_proofs.v] proves against the
+    These are the obligations that [storage_page_cpp_proofs/all.v] proves against the
     generated AST.  They are intentionally stated in terms of the pure models
     above, so the C++ proof can be checked independently from the paper-level
     root uniqueness theorem.

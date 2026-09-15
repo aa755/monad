@@ -18,8 +18,8 @@ controller reads committed Git blobs, not a developer's working tree. A
 proof-only change also triggers verification. It does not require rebuilding
 the checker image unless the private toolchain or reviewed build policy changes.
 
-The pilot accepts ordinary C/C++ changes under `category/` and proof sources,
-issue notes, and documentation under `monadproofs/`.
+The pilot accepts ordinary C/C++ changes under `category/`, plus proof sources
+and documentation under `monadproofs/`.
 Build configuration, proof-suite import lists (`all.v`), and compiler-input
 fixtures are pinned in a private, reviewed manifest. Changing those files or
 removing a required proof file needs an operator policy update. Executable
@@ -57,12 +57,14 @@ its own specifications, models, and existing assumptions. This is not proof
 that every Monad function is verified, all assumptions are sound, or every
 execution terminates. Review changes to specifications, models, axioms, and
 proof coverage; compilation alone does not establish that a specification was
-not weakened. Suspended proofs remain identified in [proofs/all.v](../proofs/all.v) and
-the relevant [issues](../issues/).
+not weakened. This experimental branch deliberately narrows
+[proofs/all.v](../proofs/all.v) to MIP-8, including encoding and decoding.
+Its deletions and build-configuration changes require an explicit review of
+the controller's private manifest; this branch does not update that manifest.
 
 The original proof sources are distributed under the repository's license;
 existing per-file notices remain applicable. Building additionally requires
-the external BRiCk, automation, library-spec, `automisc`, and EVM theories in
+the external BRiCk, automation, and library-spec theories in
 the composed FV workspace. Publishing these clients does not redistribute or
 grant rights to those dependencies.
 

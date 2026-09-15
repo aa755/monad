@@ -195,9 +195,7 @@ Qed.
 
     - [blake3_compress_in_place_model] models the internal compression entry
       point from [blake3_impl.h];
-    - [blake3_hash_one_model] models one logical lane of [blake3_hash_many];
-    - [blake3_hash_bytes_model] models the public streaming hasher from
-      [blake3.h] after feeding a byte string and finalizing 32 output bytes.
+    - [blake3_hash_one_model] models one logical lane of [blake3_hash_many].
 *)
 Definition normalize_blake3_cv (words : list N) : blake3_cv :=
   let prefix := firstn 8 words in
@@ -359,9 +357,6 @@ Proof.
   rewrite Hcounter.
   reflexivity.
 Qed.
-
-Definition blake3_hash_bytes_model (input : list byte) : digest.
-Admitted. (* TOFIXLATER: executable model of the public BLAKE3 hasher. *)
 
 Definition blake3_cv_bytes (cv : blake3_cv) : list byte :=
   concat (map (bytes_of_N_le 4) (normalize_blake3_cv cv)).
